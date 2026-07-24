@@ -1,30 +1,85 @@
-import Link from "next/link";
-
-const navItems = [
-  { href: "/admin/dashboard", label: "Dashboard" },
-  { href: "/admin/medicines", label: "Medicines" },
-  { href: "/admin/suppliers", label: "Suppliers" },
-  { href: "/admin/customers", label: "Customers" },
-  { href: "/admin/sales", label: "Sales" },
+const menus = [
+  "Dashboard",
+  "Medicines",
+  "Categories",
+  "Stock",
+  "Purchase",
+  "Sales & Billing",
+  "Suppliers",
+  "Customers",
+  "Employee Mgmt.",
+  "Reports",
+  "Expiry Alerts",
+  "Low Stock Alerts",
+  "Settings",
 ];
 
-export default function Sidebar() {
-  return (
-    <aside className="w-full max-w-xs space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-6">
-        <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Navigation</p>
-      </div>
-      <nav className="space-y-2">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="block rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
-    </aside>
-  );
+
+export default function Sidebar(){
+
+return (
+
+<aside className="w-64 bg-[#12395b] text-white min-h-screen p-5">
+
+
+<div className="mb-8">
+
+<h1 className="text-xl font-bold">
+Green Life Pharmacy
+</h1>
+
+<p className="text-xs text-blue-200">
+Management System
+</p>
+
+</div>
+
+
+
+<p className="text-xs text-blue-300 mb-4">
+ADMIN PANEL
+</p>
+
+
+<nav className="space-y-2">
+
+{
+menus.map((item,index)=>(
+
+<div
+key={index}
+className={`px-4 py-3 rounded-lg cursor-pointer
+${index===0 ? "bg-blue-600" : "hover:bg-blue-700"}
+`}
+>
+
+{item}
+
+</div>
+
+))
+}
+
+</nav>
+
+
+
+<div className="absolute bottom-5">
+
+<p className="font-semibold">
+Admin User
+</p>
+
+<p className="text-xs text-blue-200">
+admin@greenlifepharmacy.com
+</p>
+
+</div>
+
+
+</aside>
+
+
+)
+
 }

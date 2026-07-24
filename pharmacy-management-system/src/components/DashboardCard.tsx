@@ -1,13 +1,21 @@
-type DashboardCardProps = {
+interface DashboardCardProps {
   title: string;
   value: string;
-};
+}
 
-export default function DashboardCard({ title, value }: DashboardCardProps) {
+export default function DashboardCard({
+  title,
+  value,
+}: DashboardCardProps) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">{title}</p>
-      <p className="mt-4 text-4xl font-semibold text-slate-900">{value}</p>
+    <div className="bg-white rounded-xl shadow-md p-6 border">
+      <h3 className="text-gray-500 text-sm">
+        {title}
+      </h3>
+
+      <p className="text-3xl font-bold text-blue-600 mt-3">
+        {value}
+      </p>
     </div>
   );
 }
