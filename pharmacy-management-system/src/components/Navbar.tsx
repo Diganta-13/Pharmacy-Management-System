@@ -1,39 +1,69 @@
-export default function Navbar(){
+"use client";
 
-return(
+import { AlertTriangle, Bell } from "lucide-react";
+import { usePathname } from "next/navigation";
 
-<header className="h-16 bg-white border-b flex items-center justify-between px-6">
+const pageTitles: Record<string, string> = {
+  "/admin/dashboard": "Dashboard",
+  "/admin/medicines": "Medicines",
+  "/admin/categories": "Categories",
+  "/admin/stock": "Stock",
+  "/admin/purchase": "Purchase",
+  "/admin/sales": "Sales & Billing",
+  "/admin/suppliers": "Suppliers",
+  "/admin/customers": "Customers",
+  "/admin/employees": "Employee Management",
+  "/admin/reports": "Reports",
+  "/admin/expiry-alerts": "Expiry Alerts",
+  "/admin/low-stock-alerts": "Low Stock Alerts",
+  "/admin/settings": "Settings",
+};
 
+export default function Navbar() {
+  const pathname = usePathname();
 
-<h2 className="text-xl font-semibold">
-Dashboard
-</h2>
+  const title = pageTitles[pathname] ?? "Admin Panel";
 
+  return (
+    <header className="sticky top-0 z-30 flex h-[64px] items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
+      <h2 className="text-[16px] font-semibold text-slate-900">{title}</h2>
 
-<div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-3">
+        <button
+          type="button"
+          className="hidden rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-medium text-sky-700 sm:block"
+        >
+          Administrator
+        </button>
 
+        <button
+          type="button"
+          className="hidden items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-xs font-medium text-orange-600 sm:flex"
+        >
+          <AlertTriangle className="h-4 w-4" />
+          4 alerts
+        </button>
 
-<button className="px-4 py-2 rounded-full border text-blue-600">
-Administrator
-</button>
+        <button
+          type="button"
+          aria-label="Notifications"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
+        >
+          <Bell className="h-5 w-5" />
 
+          <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white">
+            4
+          </span>
+        </button>
 
-<button className="px-4 py-2 rounded-full border text-orange-500">
-⚠ 4 alerts
-</button>
-
-
-<div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center">
-A
-</div>
-
-
-</div>
-
-
-</header>
-
-
-)
-
+        <button
+          type="button"
+          aria-label="Admin profile"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[#078cc6] text-sm font-semibold text-white"
+        >
+          A
+        </button>
+      </div>
+    </header>
+  );
 }
