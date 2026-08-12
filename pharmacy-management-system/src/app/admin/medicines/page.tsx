@@ -2,14 +2,25 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import {
+  Package,
   Pencil,
+  Pill,
   Plus,
+  Power,
   Search,
-  Trash2,
   X,
 } from "lucide-react";
 
 type MedicineStatus = "active" | "inactive";
+
+type MedicineUnit = {
+  id: string;
+  unitName: string;
+  conversionToBase: number;
+  sellable: boolean;
+  purchasable: boolean;
+  isBaseUnit: boolean;
+};
 
 type Medicine = {
   id: string;
@@ -17,14 +28,22 @@ type Medicine = {
   genericName: string;
   category: string;
   companyName: string;
-  batchNo: string;
-  unit: string;
-  purchasePrice: number;
-  sellingPrice: number;
-  stockQuantity: number;
+  dosageForm: string;
+  strength: string;
+  baseUnit: string;
   reorderLevel: number;
-  expiryDate: string;
+  prescriptionRequired: boolean;
   status: MedicineStatus;
+  units: MedicineUnit[];
+};
+
+type MedicineUnitForm = {
+  id: string;
+  unitName: string;
+  conversionToBase: string;
+  sellable: boolean;
+  purchasable: boolean;
+  isBaseUnit: boolean;
 };
 
 type MedicineForm = {
@@ -32,14 +51,13 @@ type MedicineForm = {
   genericName: string;
   category: string;
   companyName: string;
-  batchNo: string;
-  unit: string;
-  purchasePrice: string;
-  sellingPrice: string;
-  stockQuantity: string;
+  dosageForm: string;
+  strength: string;
+  baseUnit: string;
   reorderLevel: string;
-  expiryDate: string;
+  prescriptionRequired: boolean;
   status: MedicineStatus;
+  units: MedicineUnitForm[];
 };
 
 const categories = [
@@ -53,13 +71,35 @@ const categories = [
   "Cough & Cold",
 ];
 
-const units = [
-  "Strip",
-  "Box",
-  "Bottle",
-  "Piece",
-  "Tube",
+const dosageForms = [
+  "Tablet",
+  "Capsule",
+  "Syrup",
+  "Suspension",
+  "Cream",
+  "Ointment",
+  "Injection",
+  "Drops",
+  "Inhaler",
   "Sachet",
+  "Other",
+];
+
+const baseUnits = [
+  "Tablet",
+  "Capsule",
+  "Bottle",
+  "Tube",
+  "Vial",
+  "Ampoule",
+  "Sachet",
+  "Piece",
+  "Inhaler",
+  "Pen",
+  "Cartridge",
+  "Packet",
+  "Jar",
+  "Other",
 ];
 
 const initialMedicines: Medicine[] = [
@@ -69,14 +109,38 @@ const initialMedicines: Medicine[] = [
     genericName: "Paracetamol",
     category: "Pain Relief",
     companyName: "Beximco",
-    batchNo: "NP-2601",
-    unit: "Strip",
-    purchasePrice: 8,
-    sellingPrice: 12,
-    stockQuantity: 450,
-    reorderLevel: 50,
-    expiryDate: "2027-01-30",
+    dosageForm: "Tablet",
+    strength: "500mg",
+    baseUnit: "Tablet",
+    reorderLevel: 500,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-001-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-001-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-001-U3",
+        unitName: "Box",
+        conversionToBase: 200,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
     id: "MED-002",
@@ -84,14 +148,38 @@ const initialMedicines: Medicine[] = [
     genericName: "Paracetamol + Caffeine",
     category: "Pain Relief",
     companyName: "Square",
-    batchNo: "AC-2602",
-    unit: "Strip",
-    purchasePrice: 18,
-    sellingPrice: 25,
-    stockQuantity: 180,
-    reorderLevel: 40,
-    expiryDate: "2027-04-15",
+    dosageForm: "Tablet",
+    strength: "500mg + 65mg",
+    baseUnit: "Tablet",
+    reorderLevel: 400,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-002-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-002-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-002-U3",
+        unitName: "Box",
+        conversionToBase: 200,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
     id: "MED-003",
@@ -99,14 +187,38 @@ const initialMedicines: Medicine[] = [
     genericName: "Paracetamol",
     category: "Pain Relief",
     companyName: "Beximco",
-    batchNo: "NE-2603",
-    unit: "Strip",
-    purchasePrice: 16,
-    sellingPrice: 22,
-    stockQuantity: 160,
-    reorderLevel: 40,
-    expiryDate: "2027-05-20",
+    dosageForm: "Tablet",
+    strength: "665mg",
+    baseUnit: "Tablet",
+    reorderLevel: 300,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-003-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-003-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-003-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
     id: "MED-004",
@@ -114,14 +226,38 @@ const initialMedicines: Medicine[] = [
     genericName: "Omeprazole",
     category: "Gastric / Antacid",
     companyName: "Square",
-    batchNo: "SC-2604",
-    unit: "Box",
-    purchasePrice: 65,
-    sellingPrice: 80,
-    stockQuantity: 35,
-    reorderLevel: 80,
-    expiryDate: "2026-10-30",
+    dosageForm: "Capsule",
+    strength: "20mg",
+    baseUnit: "Capsule",
+    reorderLevel: 500,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-004-U1",
+        unitName: "Capsule",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-004-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-004-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
     id: "MED-005",
@@ -129,14 +265,38 @@ const initialMedicines: Medicine[] = [
     genericName: "Esomeprazole",
     category: "Gastric / Antacid",
     companyName: "Renata",
-    batchNo: "MX-2605",
-    unit: "Box",
-    purchasePrice: 72,
-    sellingPrice: 90,
-    stockQuantity: 220,
-    reorderLevel: 60,
-    expiryDate: "2027-02-28",
+    dosageForm: "Capsule",
+    strength: "20mg",
+    baseUnit: "Capsule",
+    reorderLevel: 400,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-005-U1",
+        unitName: "Capsule",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-005-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-005-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
     id: "MED-006",
@@ -144,181 +304,236 @@ const initialMedicines: Medicine[] = [
     genericName: "Esomeprazole",
     category: "Gastric / Antacid",
     companyName: "Healthcare",
-    batchNo: "SG-2606",
-    unit: "Box",
-    purchasePrice: 50,
-    sellingPrice: 65,
-    stockQuantity: 12,
-    reorderLevel: 50,
-    expiryDate: "2026-09-25",
+    dosageForm: "Capsule",
+    strength: "20mg",
+    baseUnit: "Capsule",
+    reorderLevel: 350,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-006-U1",
+        unitName: "Capsule",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-006-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-006-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
     id: "MED-007",
-    name: "Losectil 20mg",
-    genericName: "Omeprazole",
-    category: "Gastric / Antacid",
-    companyName: "Eskayef",
-    batchNo: "LS-2607",
-    unit: "Box",
-    purchasePrice: 55,
-    sellingPrice: 70,
-    stockQuantity: 95,
-    reorderLevel: 40,
-    expiryDate: "2027-03-10",
-    status: "active",
-  },
-  {
-    id: "MED-008",
     name: "Monas 10mg",
     genericName: "Montelukast",
     category: "Allergy",
-    companyName: "Acme",
-    batchNo: "MN-2608",
-    unit: "Strip",
-    purchasePrice: 120,
-    sellingPrice: 150,
-    stockQuantity: 200,
-    reorderLevel: 50,
-    expiryDate: "2027-06-15",
+    companyName: "ACME",
+    dosageForm: "Tablet",
+    strength: "10mg",
+    baseUnit: "Tablet",
+    reorderLevel: 300,
+    prescriptionRequired: true,
     status: "active",
+    units: [
+      {
+        id: "MED-007-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-007-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-007-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
-    id: "MED-009",
-    name: "Histacin",
-    genericName: "Chlorpheniramine",
-    category: "Allergy",
-    companyName: "Jayson",
-    batchNo: "HS-2609",
-    unit: "Strip",
-    purchasePrice: 5,
-    sellingPrice: 8,
-    stockQuantity: 8,
-    reorderLevel: 60,
-    expiryDate: "2027-01-20",
-    status: "active",
-  },
-  {
-    id: "MED-010",
+    id: "MED-008",
     name: "Fexo 120mg",
     genericName: "Fexofenadine",
     category: "Allergy",
     companyName: "Beximco",
-    batchNo: "FX-2610",
-    unit: "Strip",
-    purchasePrice: 38,
-    sellingPrice: 50,
-    stockQuantity: 320,
-    reorderLevel: 50,
-    expiryDate: "2027-08-12",
+    dosageForm: "Tablet",
+    strength: "120mg",
+    baseUnit: "Tablet",
+    reorderLevel: 300,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-008-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-008-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-008-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
-    id: "MED-011",
-    name: "Zimax 500mg",
-    genericName: "Azithromycin",
-    category: "Antibiotic",
-    companyName: "Square",
-    batchNo: "ZM-2611",
-    unit: "Strip",
-    purchasePrice: 80,
-    sellingPrice: 100,
-    stockQuantity: 75,
-    reorderLevel: 30,
-    expiryDate: "2027-07-30",
-    status: "active",
-  },
-  {
-    id: "MED-012",
-    name: "DP 10mg",
-    genericName: "Domperidone",
-    category: "Gastric / Antacid",
-    companyName: "Square",
-    batchNo: "DP-2612",
-    unit: "Strip",
-    purchasePrice: 14,
-    sellingPrice: 20,
-    stockQuantity: 0,
-    reorderLevel: 30,
-    expiryDate: "2027-05-15",
-    status: "active",
-  },
-  {
-    id: "MED-013",
+    id: "MED-009",
     name: "Amdocal 5mg",
     genericName: "Amlodipine",
     category: "Blood Pressure",
     companyName: "Beximco",
-    batchNo: "AM-2613",
-    unit: "Strip",
-    purchasePrice: 28,
-    sellingPrice: 35,
-    stockQuantity: 140,
-    reorderLevel: 40,
-    expiryDate: "2027-10-10",
+    dosageForm: "Tablet",
+    strength: "5mg",
+    baseUnit: "Tablet",
+    reorderLevel: 300,
+    prescriptionRequired: true,
     status: "active",
+    units: [
+      {
+        id: "MED-009-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-009-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-009-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
   {
-    id: "MED-014",
-    name: "Comet 500mg",
-    genericName: "Metformin",
-    category: "Diabetes",
-    companyName: "Square",
-    batchNo: "CM-2614",
-    unit: "Strip",
-    purchasePrice: 30,
-    sellingPrice: 40,
-    stockQuantity: 130,
-    reorderLevel: 40,
-    expiryDate: "2027-09-20",
-    status: "active",
-  },
-  {
-    id: "MED-015",
+    id: "MED-010",
     name: "Ceevit 250mg",
     genericName: "Vitamin C",
     category: "Vitamin & Supplement",
     companyName: "Square",
-    batchNo: "CV-2615",
-    unit: "Strip",
-    purchasePrice: 18,
-    sellingPrice: 25,
-    stockQuantity: 210,
-    reorderLevel: 50,
-    expiryDate: "2027-11-30",
+    dosageForm: "Tablet",
+    strength: "250mg",
+    baseUnit: "Tablet",
+    reorderLevel: 250,
+    prescriptionRequired: false,
     status: "active",
+    units: [
+      {
+        id: "MED-010-U1",
+        unitName: "Tablet",
+        conversionToBase: 1,
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+      {
+        id: "MED-010-U2",
+        unitName: "Strip",
+        conversionToBase: 10,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+      {
+        id: "MED-010-U3",
+        unitName: "Box",
+        conversionToBase: 100,
+        sellable: true,
+        purchasable: true,
+        isBaseUnit: false,
+      },
+    ],
   },
 ];
 
-const emptyForm: MedicineForm = {
-  name: "",
-  genericName: "",
-  category: "",
-  companyName: "",
-  batchNo: "",
-  unit: "",
-  purchasePrice: "",
-  sellingPrice: "",
-  stockQuantity: "",
-  reorderLevel: "",
-  expiryDate: "",
-  status: "active",
-};
+function createEmptyForm(): MedicineForm {
+  return {
+    name: "",
+    genericName: "",
+    category: "",
+    companyName: "",
+    dosageForm: "",
+    strength: "",
+    baseUnit: "Tablet",
+    reorderLevel: "",
+    prescriptionRequired: false,
+    status: "active",
+    units: [
+      {
+        id: "BASE-UNIT",
+        unitName: "Tablet",
+        conversionToBase: "1",
+        sellable: true,
+        purchasable: false,
+        isBaseUnit: true,
+      },
+    ],
+  };
+}
 
-export default function AdminMedicinesPage() {
+export default function MedicinesPage() {
   const [medicines, setMedicines] =
     useState<Medicine[]>(initialMedicines);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] =
-    useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] =
     useState<Medicine | null>(null);
 
   const [form, setForm] =
-    useState<MedicineForm>(emptyForm);
+    useState<MedicineForm>(createEmptyForm());
 
   const filteredMedicines = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
@@ -328,19 +543,54 @@ export default function AdminMedicinesPage() {
         medicine.name.toLowerCase().includes(search) ||
         medicine.genericName.toLowerCase().includes(search) ||
         medicine.companyName.toLowerCase().includes(search) ||
-        medicine.batchNo.toLowerCase().includes(search);
+        medicine.id.toLowerCase().includes(search);
 
       const matchesCategory =
-        selectedCategory === "All" ||
-        medicine.category === selectedCategory;
+        categoryFilter === "All" ||
+        medicine.category === categoryFilter;
 
-      return matchesSearch && matchesCategory;
+      const matchesStatus =
+        statusFilter === "All" ||
+        medicine.status === statusFilter;
+
+      return matchesSearch && matchesCategory && matchesStatus;
     });
-  }, [medicines, searchTerm, selectedCategory]);
+  }, [medicines, searchTerm, categoryFilter, statusFilter]);
+
+  const statistics = useMemo(() => {
+    const active = medicines.filter(
+      (medicine) => medicine.status === "active",
+    ).length;
+
+    const prescriptionRequired = medicines.filter(
+      (medicine) => medicine.prescriptionRequired,
+    ).length;
+
+    const configuredUnits = medicines.reduce(
+      (total, medicine) => total + medicine.units.length,
+      0,
+    );
+
+    return {
+      total: medicines.length,
+      active,
+      prescriptionRequired,
+      configuredUnits,
+    };
+  }, [medicines]);
+
+  function generateMedicineId() {
+    const highestNumber = medicines.reduce((highest, medicine) => {
+      const value = Number(medicine.id.replace("MED-", ""));
+      return Math.max(highest, Number.isNaN(value) ? 0 : value);
+    }, 0);
+
+    return `MED-${String(highestNumber + 1).padStart(3, "0")}`;
+  }
 
   function openAddModal() {
     setEditingMedicine(null);
-    setForm(emptyForm);
+    setForm(createEmptyForm());
     setIsModalOpen(true);
   }
 
@@ -352,14 +602,20 @@ export default function AdminMedicinesPage() {
       genericName: medicine.genericName,
       category: medicine.category,
       companyName: medicine.companyName,
-      batchNo: medicine.batchNo,
-      unit: medicine.unit,
-      purchasePrice: String(medicine.purchasePrice),
-      sellingPrice: String(medicine.sellingPrice),
-      stockQuantity: String(medicine.stockQuantity),
+      dosageForm: medicine.dosageForm,
+      strength: medicine.strength,
+      baseUnit: medicine.baseUnit,
       reorderLevel: String(medicine.reorderLevel),
-      expiryDate: medicine.expiryDate,
+      prescriptionRequired: medicine.prescriptionRequired,
       status: medicine.status,
+      units: medicine.units.map((unit) => ({
+        id: unit.id,
+        unitName: unit.unitName,
+        conversionToBase: String(unit.conversionToBase),
+        sellable: unit.sellable,
+        purchasable: unit.purchasable,
+        isBaseUnit: unit.isBaseUnit,
+      })),
     });
 
     setIsModalOpen(true);
@@ -368,83 +624,211 @@ export default function AdminMedicinesPage() {
   function closeModal() {
     setIsModalOpen(false);
     setEditingMedicine(null);
-    setForm(emptyForm);
+    setForm(createEmptyForm());
   }
 
-  function generateMedicineId() {
-    const highestNumber = medicines.reduce(
-      (highest, medicine) => {
-        const currentNumber = Number(
-          medicine.id.replace("MED-", ""),
+  function handleBaseUnitChange(newBaseUnit: string) {
+    setForm((currentForm) => {
+      const newUnits = currentForm.units
+        .filter(
+          (unit) =>
+            unit.isBaseUnit ||
+            unit.unitName.trim().toLowerCase() !==
+              newBaseUnit.trim().toLowerCase(),
+        )
+        .map((unit) =>
+          unit.isBaseUnit
+            ? {
+                ...unit,
+                unitName: newBaseUnit,
+                conversionToBase: "1",
+              }
+            : unit,
         );
 
-        return Math.max(highest, currentNumber);
-      },
-      0,
-    );
-
-    return `MED-${String(highestNumber + 1).padStart(
-      3,
-      "0",
-    )}`;
+      return {
+        ...currentForm,
+        baseUnit: newBaseUnit,
+        units: newUnits,
+      };
+    });
   }
 
-  function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
+  function addPackagingUnit() {
+    setForm((currentForm) => ({
+      ...currentForm,
+      units: [
+        ...currentForm.units,
+        {
+          id: `UNIT-${Date.now()}-${currentForm.units.length + 1}`,
+          unitName: "",
+          conversionToBase: "",
+          sellable: true,
+          purchasable: true,
+          isBaseUnit: false,
+        },
+      ],
+    }));
+  }
 
-    const purchasePrice = Number(form.purchasePrice);
-    const sellingPrice = Number(form.sellingPrice);
-    const stockQuantity = Number(form.stockQuantity);
+  function updateUnit(
+    unitId: string,
+    field:
+      | "unitName"
+      | "conversionToBase"
+      | "sellable"
+      | "purchasable",
+    value: string | boolean,
+  ) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      units: currentForm.units.map((unit) =>
+        unit.id === unitId
+          ? {
+              ...unit,
+              [field]: value,
+            }
+          : unit,
+      ),
+    }));
+  }
+
+  function removePackagingUnit(unitId: string) {
+    setForm((currentForm) => ({
+      ...currentForm,
+      units: currentForm.units.filter(
+        (unit) => unit.id !== unitId || unit.isBaseUnit,
+      ),
+    }));
+  }
+
+  function validateForm() {
+    if (!form.name.trim()) {
+      window.alert("Medicine name is required.");
+      return false;
+    }
+
+    if (!form.genericName.trim()) {
+      window.alert("Generic name is required.");
+      return false;
+    }
+
+    if (!form.category) {
+      window.alert("Please select a category.");
+      return false;
+    }
+
+    if (!form.companyName.trim()) {
+      window.alert("Company name is required.");
+      return false;
+    }
+
+    if (!form.dosageForm) {
+      window.alert("Please select a dosage form.");
+      return false;
+    }
+
+    if (!form.strength.trim()) {
+      window.alert("Strength is required.");
+      return false;
+    }
+
+    if (!form.baseUnit) {
+      window.alert("Please select a base unit.");
+      return false;
+    }
+
     const reorderLevel = Number(form.reorderLevel);
 
     if (
-      !form.name.trim() ||
-      !form.genericName.trim() ||
-      !form.category ||
-      !form.companyName.trim() ||
-      !form.batchNo.trim() ||
-      !form.unit ||
-      !form.expiryDate
-    ) {
-      window.alert("Please fill in all required fields.");
-      return;
-    }
-
-    if (
-      Number.isNaN(purchasePrice) ||
-      Number.isNaN(sellingPrice) ||
-      Number.isNaN(stockQuantity) ||
-      Number.isNaN(reorderLevel)
-    ) {
-      window.alert(
-        "Price, stock and reorder level must be valid numbers.",
-      );
-      return;
-    }
-
-    if (
-      purchasePrice < 0 ||
-      sellingPrice < 0 ||
-      stockQuantity < 0 ||
+      form.reorderLevel.trim() === "" ||
+      Number.isNaN(reorderLevel) ||
       reorderLevel < 0
     ) {
-      window.alert(
-        "Price, stock and reorder level cannot be negative.",
-      );
+      window.alert("Please enter a valid reorder level.");
+      return false;
+    }
+
+    if (form.units.length === 0) {
+      window.alert("At least one unit configuration is required.");
+      return false;
+    }
+
+    const unitNames = form.units.map((unit) =>
+      unit.unitName.trim().toLowerCase(),
+    );
+
+    if (unitNames.some((name) => !name)) {
+      window.alert("Every packaging unit must have a unit name.");
+      return false;
+    }
+
+    if (new Set(unitNames).size !== unitNames.length) {
+      window.alert("Duplicate unit names are not allowed.");
+      return false;
+    }
+
+    const baseUnitsFound = form.units.filter(
+      (unit) => unit.isBaseUnit,
+    );
+
+    if (baseUnitsFound.length !== 1) {
+      window.alert("Exactly one base unit is required.");
+      return false;
+    }
+
+    for (const unit of form.units) {
+      const conversion = Number(unit.conversionToBase);
+
+      if (
+        Number.isNaN(conversion) ||
+        conversion <= 0 ||
+        !Number.isInteger(conversion)
+      ) {
+        window.alert(
+          `Conversion for ${unit.unitName || "a unit"} must be a positive whole number.`,
+        );
+        return false;
+      }
+
+      if (unit.isBaseUnit && conversion !== 1) {
+        window.alert("Base unit conversion must always be 1.");
+        return false;
+      }
+
+      if (!unit.isBaseUnit && conversion <= 1) {
+        window.alert(
+          `${unit.unitName} must contain more than 1 ${form.baseUnit}.`,
+        );
+        return false;
+      }
+
+      if (!unit.sellable && !unit.purchasable) {
+        window.alert(
+          `${unit.unitName} must be sellable, purchasable, or both.`,
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!validateForm()) {
       return;
     }
 
-    if (sellingPrice < purchasePrice) {
-      const continueSave = window.confirm(
-        "Selling price is lower than purchase price. Do you want to continue?",
-      );
-
-      if (!continueSave) {
-        return;
-      }
-    }
+    const units: MedicineUnit[] = form.units.map((unit) => ({
+      id: unit.id,
+      unitName: unit.unitName.trim(),
+      conversionToBase: Number(unit.conversionToBase),
+      sellable: unit.sellable,
+      purchasable: unit.purchasable,
+      isBaseUnit: unit.isBaseUnit,
+    }));
 
     if (editingMedicine) {
       setMedicines((currentMedicines) =>
@@ -456,352 +840,364 @@ export default function AdminMedicinesPage() {
                 genericName: form.genericName.trim(),
                 category: form.category,
                 companyName: form.companyName.trim(),
-                batchNo: form.batchNo.trim(),
-                unit: form.unit,
-                purchasePrice,
-                sellingPrice,
-                stockQuantity,
-                reorderLevel,
-                expiryDate: form.expiryDate,
+                dosageForm: form.dosageForm,
+                strength: form.strength.trim(),
+                baseUnit: form.baseUnit,
+                reorderLevel: Number(form.reorderLevel),
+                prescriptionRequired: form.prescriptionRequired,
                 status: form.status,
+                units,
               }
             : medicine,
         ),
       );
     } else {
+      const medicineId = generateMedicineId();
+
       const newMedicine: Medicine = {
-        id: generateMedicineId(),
+        id: medicineId,
         name: form.name.trim(),
         genericName: form.genericName.trim(),
         category: form.category,
         companyName: form.companyName.trim(),
-        batchNo: form.batchNo.trim(),
-        unit: form.unit,
-        purchasePrice,
-        sellingPrice,
-        stockQuantity,
-        reorderLevel,
-        expiryDate: form.expiryDate,
+        dosageForm: form.dosageForm,
+        strength: form.strength.trim(),
+        baseUnit: form.baseUnit,
+        reorderLevel: Number(form.reorderLevel),
+        prescriptionRequired: form.prescriptionRequired,
         status: form.status,
+        units: units.map((unit, index) => ({
+          ...unit,
+          id: `${medicineId}-U${index + 1}`,
+        })),
       };
 
       setMedicines((currentMedicines) => [
-        ...currentMedicines,
         newMedicine,
+        ...currentMedicines,
       ]);
     }
 
     closeModal();
   }
 
-  function handleDelete(medicine: Medicine) {
-    const shouldDelete = window.confirm(
-      `Are you sure you want to delete "${medicine.name}"?`,
+  function toggleMedicineStatus(medicine: Medicine) {
+    const nextStatus: MedicineStatus =
+      medicine.status === "active" ? "inactive" : "active";
+
+    const action =
+      nextStatus === "inactive" ? "deactivate" : "activate";
+
+    const confirmed = window.confirm(
+      `Are you sure you want to ${action} ${medicine.name}?`,
     );
 
-    if (!shouldDelete) {
+    if (!confirmed) {
       return;
     }
 
     setMedicines((currentMedicines) =>
-      currentMedicines.filter(
-        (currentMedicine) =>
-          currentMedicine.id !== medicine.id,
+      currentMedicines.map((item) =>
+        item.id === medicine.id
+          ? {
+              ...item,
+              status: nextStatus,
+            }
+          : item,
       ),
     );
   }
 
-  function getMedicineStatus(medicine: Medicine) {
-    if (medicine.status === "inactive") {
-      return "Inactive";
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const expiryDate = new Date(
-      `${medicine.expiryDate}T00:00:00`,
-    );
-
-    if (expiryDate < today) {
-      return "Expired";
-    }
-
-    if (medicine.stockQuantity === 0) {
-      return "Out of Stock";
-    }
-
-    if (
-      medicine.stockQuantity <= medicine.reorderLevel
-    ) {
-      return "Low Stock";
-    }
-
-    const ninetyDaysFromToday = new Date(today);
-    ninetyDaysFromToday.setDate(
-      ninetyDaysFromToday.getDate() + 90,
-    );
-
-    if (expiryDate <= ninetyDaysFromToday) {
-      return "Near Expiry";
-    }
-
-    return "In Stock";
-  }
-
-  function getStatusClass(status: string) {
-    switch (status) {
-      case "In Stock":
-        return "bg-emerald-100 text-emerald-700";
-
-      case "Low Stock":
-        return "bg-amber-100 text-amber-700";
-
-      case "Out of Stock":
-        return "bg-rose-100 text-rose-600";
-
-      case "Expired":
-        return "bg-red-100 text-red-700";
-
-      case "Near Expiry":
-        return "bg-orange-100 text-orange-700";
-
-      case "Inactive":
-        return "bg-slate-200 text-slate-600";
-
-      default:
-        return "bg-slate-100 text-slate-600";
-    }
-  }
-
   return (
     <>
-      <div className="mx-auto w-full max-w-[1600px] space-y-4">
-        <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-[650px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <div className="mx-auto w-full max-w-[1600px] space-y-5">
+        {/* PAGE HEADER */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">
+              Medicines
+            </h1>
 
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(event) =>
-                setSearchTerm(event.target.value)
-              }
-              placeholder="Search by medicine, generic, company or batch..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-[13px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-            />
+            <p className="mt-1 text-[12px] text-slate-500">
+              Manage medicine master data and packaging units.
+            </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
+          >
+            <Plus className="h-4 w-4" />
+            Add Medicine
+          </button>
+        </div>
+
+        {/* IMPORTANT INFO */}
+        <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3">
+          <div className="flex gap-3">
+            <Pill className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+
+            <div>
+              <p className="text-[12px] font-semibold text-sky-900">
+                Medicine Master
+              </p>
+
+              <p className="mt-1 text-[11px] leading-5 text-sky-700">
+                Batch number, expiry date, stock quantity, purchase
+                cost and batch selling price are intentionally not
+                stored here. Those will be managed through Purchase
+                and Batch Inventory.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* STATISTICS */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Total Medicines"
+            value={statistics.total}
+            description="Medicine master records"
+          />
+
+          <StatCard
+            label="Active Medicines"
+            value={statistics.active}
+            description="Available for operations"
+          />
+
+          <StatCard
+            label="Prescription Required"
+            value={statistics.prescriptionRequired}
+            description="Rx controlled products"
+          />
+
+          <StatCard
+            label="Configured Units"
+            value={statistics.configuredUnits}
+            description="Base + packaging units"
+          />
+        </div>
+
+        {/* SEARCH + FILTER */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px_180px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(event) =>
+                  setSearchTerm(event.target.value)
+                }
+                placeholder="Search medicine, generic, company or code..."
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-[12px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              />
+            </div>
+
             <select
-              value={selectedCategory}
+              value={categoryFilter}
               onChange={(event) =>
-                setSelectedCategory(event.target.value)
+                setCategoryFilter(event.target.value)
               }
-              className="h-10 min-w-[190px] rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-600 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[12px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
             >
               <option value="All">All Categories</option>
 
               {categories.map((category) => (
-                <option
-                  key={category}
-                  value={category}
-                >
+                <option key={category} value={category}>
                   {category}
                 </option>
               ))}
             </select>
 
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value)
+              }
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-[12px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
             >
-              <Plus className="h-4 w-4" />
-              Add Medicine
-            </button>
+              <option value="All">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
           </div>
         </section>
 
+        {/* TABLE */}
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] border-collapse text-left">
+            <table className="w-full min-w-[1250px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/80">
-                  <th className="w-[60px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    SL
-                  </th>
+                  <TableHead>Medicine</TableHead>
+                  <TableHead>Generic</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Form / Strength</TableHead>
+                  <TableHead>Base Unit</TableHead>
+                  <TableHead>Reorder Level</TableHead>
+                  <TableHead>Packaging</TableHead>
+                  <TableHead>Rx</TableHead>
+                  <TableHead>Status</TableHead>
 
-                  <th className="w-[175px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Medicine
-                  </th>
-
-                  <th className="w-[180px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Generic
-                  </th>
-
-                  <th className="w-[160px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Category
-                  </th>
-
-                  <th className="w-[140px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Company
-                  </th>
-
-                  <th className="w-[90px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Unit
-                  </th>
-
-                  <th className="w-[100px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Purchase
-                  </th>
-
-                  <th className="w-[90px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Sell
-                  </th>
-
-                  <th className="w-[90px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Stock
-                  </th>
-
-                  <th className="w-[120px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Expiry
-                  </th>
-
-                  <th className="w-[120px] px-4 py-4 text-[11px] font-medium text-slate-500">
-                    Status
-                  </th>
-
-                  <th className="w-[100px] px-4 py-4 text-[11px] font-medium text-slate-500">
+                  <th className="sticky right-0 z-10 w-[115px] bg-slate-50 px-4 py-4 text-[10px] font-medium text-slate-500">
                     Action
                   </th>
                 </tr>
               </thead>
 
               <tbody>
-                {filteredMedicines.map(
-                  (medicine, index) => {
-                    const displayStatus =
-                      getMedicineStatus(medicine);
+                {filteredMedicines.map((medicine) => (
+                  <tr
+                    key={medicine.id}
+                    className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
+                  >
+                    <td className="px-4 py-4">
+                      <p className="text-[12px] font-semibold text-slate-900">
+                        {medicine.name}
+                      </p>
 
-                    return (
-                      <tr
-                        key={medicine.id}
-                        className="border-b border-slate-100 transition last:border-b-0 hover:bg-slate-50/70"
-                      >
-                        <td className="px-4 py-[15px] text-[11px] text-slate-500">
-                          {index + 1}
-                        </td>
+                      <p className="mt-1 font-mono text-[9px] text-slate-400">
+                        {medicine.id}
+                      </p>
+                    </td>
 
-                        <td className="px-4 py-[15px]">
-                          <div>
-                            <p className="text-[13px] font-semibold text-slate-900">
-                              {medicine.name}
-                            </p>
+                    <td className="px-4 py-4 text-[11px] text-slate-600">
+                      {medicine.genericName}
+                    </td>
 
-                            <p className="mt-0.5 font-mono text-[9px] text-slate-400">
-                              {medicine.id}
-                            </p>
-                          </div>
-                        </td>
+                    <td className="px-4 py-4">
+                      <span className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[9px] font-medium text-sky-700">
+                        {medicine.category}
+                      </span>
+                    </td>
 
-                        <td className="px-4 py-[15px] text-[11px] text-slate-500">
-                          {medicine.genericName}
-                        </td>
+                    <td className="px-4 py-4 text-[11px] text-slate-600">
+                      {medicine.companyName}
+                    </td>
 
-                        <td className="px-4 py-[15px]">
-                          <span className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[9px] font-medium text-sky-700">
-                            {medicine.category}
-                          </span>
-                        </td>
+                    <td className="px-4 py-4">
+                      <p className="text-[11px] font-medium text-slate-700">
+                        {medicine.dosageForm}
+                      </p>
 
-                        <td className="px-4 py-[15px] text-[11px] text-slate-500">
-                          {medicine.companyName}
-                        </td>
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {medicine.strength}
+                      </p>
+                    </td>
 
-                        <td className="px-4 py-[15px] text-[11px] text-slate-500">
-                          {medicine.unit}
-                        </td>
+                    <td className="px-4 py-4">
+                      <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-700">
+                        {medicine.baseUnit}
+                      </span>
+                    </td>
 
-                        <td className="px-4 py-[15px] text-[11px] text-slate-500">
-                          ৳
-                          {medicine.purchasePrice.toLocaleString(
-                            "en-US",
-                          )}
-                        </td>
+                    <td className="px-4 py-4">
+                      <p className="text-[11px] font-semibold text-slate-800">
+                        {medicine.reorderLevel.toLocaleString("en-US")}
+                      </p>
 
-                        <td className="px-4 py-[15px] text-[11px] font-medium text-emerald-700">
-                          ৳
-                          {medicine.sellingPrice.toLocaleString(
-                            "en-US",
-                          )}
-                        </td>
+                      <p className="mt-1 text-[9px] text-slate-400">
+                        {medicine.baseUnit}
+                      </p>
+                    </td>
 
-                        <td className="px-4 py-[15px] text-[11px] font-medium text-slate-700">
-                          {medicine.stockQuantity}
-                        </td>
-
-                        <td className="px-4 py-[15px] text-[10px] text-slate-500">
-                          {medicine.expiryDate}
-                        </td>
-
-                        <td className="px-4 py-[15px]">
+                    <td className="max-w-[260px] px-4 py-4">
+                      <div className="flex flex-wrap gap-1.5">
+                        {medicine.units.map((unit) => (
                           <span
-                            className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[9px] font-medium ${getStatusClass(
-                              displayStatus,
-                            )}`}
+                            key={unit.id}
+                            className={`inline-flex rounded-lg border px-2 py-1 text-[9px] ${
+                              unit.isBaseUnit
+                                ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                                : "border-slate-200 bg-white text-slate-600"
+                            }`}
                           >
-                            {displayStatus}
+                            {unit.unitName}
+                            <span className="ml-1 font-semibold">
+                              ×{unit.conversionToBase}
+                            </span>
                           </span>
-                        </td>
+                        ))}
+                      </div>
+                    </td>
 
-                        <td className="px-4 py-[15px]">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openEditModal(medicine)
-                              }
-                              aria-label={`Edit ${medicine.name}`}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 transition hover:bg-sky-50"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
+                    <td className="px-4 py-4">
+                      {medicine.prescriptionRequired ? (
+                        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[9px] font-medium text-amber-700">
+                          Required
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-medium text-slate-500">
+                          No
+                        </span>
+                      )}
+                    </td>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDelete(medicine)
-                              }
-                              aria-label={`Delete ${medicine.name}`}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  },
-                )}
+                    <td className="px-4 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-medium ${
+                          medicine.status === "active"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {medicine.status}
+                      </span>
+                    </td>
+
+                    <td className="sticky right-0 bg-white px-4 py-4">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(medicine)}
+                          title="Edit medicine"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 transition hover:bg-sky-50"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            toggleMedicineStatus(medicine)
+                          }
+                          title={
+                            medicine.status === "active"
+                              ? "Deactivate"
+                              : "Activate"
+                          }
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${
+                            medicine.status === "active"
+                              ? "text-rose-500 hover:bg-rose-50"
+                              : "text-emerald-600 hover:bg-emerald-50"
+                          }`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
 
                 {filteredMedicines.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={12}
+                      colSpan={11}
                       className="px-5 py-16 text-center"
                     >
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                        <Search className="h-5 w-5" />
-                      </div>
+                      <Pill className="mx-auto h-7 w-7 text-slate-300" />
 
                       <p className="mt-3 text-sm font-medium text-slate-700">
                         No medicines found
                       </p>
 
-                      <p className="mt-1 text-xs text-slate-500">
-                        Try changing your search or
-                        category filter.
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Try changing your search or filters.
                       </p>
                     </td>
                   </tr>
@@ -809,31 +1205,23 @@ export default function AdminMedicinesPage() {
               </tbody>
             </table>
           </div>
-
-          <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
-            <p className="text-[11px] text-slate-500">
-              Showing {filteredMedicines.length} of{" "}
-              {medicines.length} medicines
-            </p>
-          </div>
         </section>
       </div>
 
+      {/* ADD / EDIT MODAL */}
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
-          <div className="max-h-[92vh] w-full max-w-[760px] overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="max-h-[94vh] w-full max-w-[900px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-950">
                   {editingMedicine
                     ? "Edit Medicine"
-                    : "Add New Medicine"}
+                    : "Add Medicine"}
                 </h2>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  {editingMedicine
-                    ? "Update the selected medicine information."
-                    : "Enter the medicine information below."}
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Configure medicine identity and packaging units.
                 </p>
               </div>
 
@@ -846,307 +1234,410 @@ export default function AdminMedicinesPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={handleSubmit}
-              className="max-h-[calc(92vh-82px)] overflow-y-auto"
-            >
-              <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-6 p-5">
+                {/* BASIC INFORMATION */}
                 <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Medicine Name
-                  </label>
-
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        name: event.target.value,
-                      })
-                    }
-                    placeholder="Example: Napa 500mg"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
+                  <SectionTitle
+                    title="Medicine Information"
+                    description="Basic product identity. Stock and batch data are handled separately."
                   />
-                </div>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Generic Name
-                  </label>
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <FormField label="Medicine Name *">
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            name: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Napa 500mg"
+                        className={inputClass}
+                      />
+                    </FormField>
 
-                  <input
-                    type="text"
-                    value={form.genericName}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        genericName: event.target.value,
-                      })
-                    }
-                    placeholder="Example: Paracetamol"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
+                    <FormField label="Generic Name *">
+                      <input
+                        type="text"
+                        value={form.genericName}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            genericName: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Paracetamol"
+                        className={inputClass}
+                      />
+                    </FormField>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Category
-                  </label>
-
-                  <select
-                    value={form.category}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        category: event.target.value,
-                      })
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  >
-                    <option value="">
-                      Select category
-                    </option>
-
-                    {categories.map((category) => (
-                      <option
-                        key={category}
-                        value={category}
+                    <FormField label="Category *">
+                      <select
+                        value={form.category}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            category: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
                       >
-                        {category}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                        <option value="">Select category</option>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Company Name
-                  </label>
+                        {categories.map((category) => (
+                          <option
+                            key={category}
+                            value={category}
+                          >
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
 
-                  <input
-                    type="text"
-                    value={form.companyName}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        companyName:
-                          event.target.value,
-                      })
-                    }
-                    placeholder="Example: Square"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
+                    <FormField label="Company / Manufacturer *">
+                      <input
+                        type="text"
+                        value={form.companyName}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            companyName: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Beximco"
+                        className={inputClass}
+                      />
+                    </FormField>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Batch Number
-                  </label>
-
-                  <input
-                    type="text"
-                    value={form.batchNo}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        batchNo: event.target.value,
-                      })
-                    }
-                    placeholder="Example: NP-2601"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Unit
-                  </label>
-
-                  <select
-                    value={form.unit}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        unit: event.target.value,
-                      })
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  >
-                    <option value="">
-                      Select unit
-                    </option>
-
-                    {units.map((unit) => (
-                      <option
-                        key={unit}
-                        value={unit}
+                    <FormField label="Dosage Form *">
+                      <select
+                        value={form.dosageForm}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            dosageForm: event.target.value,
+                          }))
+                        }
+                        className={inputClass}
                       >
-                        {unit}
-                      </option>
+                        <option value="">
+                          Select dosage form
+                        </option>
+
+                        {dosageForms.map((dosageForm) => (
+                          <option
+                            key={dosageForm}
+                            value={dosageForm}
+                          >
+                            {dosageForm}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+
+                    <FormField label="Strength *">
+                      <input
+                        type="text"
+                        value={form.strength}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            strength: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 500mg"
+                        className={inputClass}
+                      />
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* INVENTORY CONFIGURATION */}
+                <div className="border-t border-slate-200 pt-6">
+                  <SectionTitle
+                    title="Inventory Configuration"
+                    description="Base unit is the smallest unit used for inventory calculations."
+                  />
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <FormField label="Base Unit *">
+                      <select
+                        value={form.baseUnit}
+                        onChange={(event) =>
+                          handleBaseUnitChange(event.target.value)
+                        }
+                        className={inputClass}
+                      >
+                        {baseUnits.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
+
+                    <FormField
+                      label="Reorder Level *"
+                      hint={`Stored in ${form.baseUnit}`}
+                    >
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={form.reorderLevel}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            reorderLevel: event.target.value,
+                          }))
+                        }
+                        placeholder="e.g. 500"
+                        className={inputClass}
+                      />
+                    </FormField>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-[11px] font-semibold text-slate-800">
+                      Example
+                    </p>
+
+                    <p className="mt-1 text-[10px] leading-5 text-slate-500">
+                      If Base Unit = Tablet and Reorder Level =
+                      500, low-stock logic will compare total
+                      sellable stock against 500 tablets, even if
+                      inventory contains boxes and strips.
+                    </p>
+                  </div>
+                </div>
+
+                {/* PACKAGING */}
+                <div className="border-t border-slate-200 pt-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <SectionTitle
+                      title="Packaging Units"
+                      description={`Define how larger units convert to ${form.baseUnit}.`}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={addPackagingUnit}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-[11px] font-semibold text-sky-700 transition hover:bg-sky-100"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Packaging Unit
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {form.units.map((unit) => (
+                      <div
+                        key={unit.id}
+                        className={`rounded-xl border p-4 ${
+                          unit.isBaseUnit
+                            ? "border-emerald-200 bg-emerald-50/40"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_180px_120px_120px_45px] lg:items-end">
+                          <FormField
+                            label={
+                              unit.isBaseUnit
+                                ? "Base Unit"
+                                : "Unit Name *"
+                            }
+                          >
+                            <input
+                              type="text"
+                              value={unit.unitName}
+                              disabled={unit.isBaseUnit}
+                              onChange={(event) =>
+                                updateUnit(
+                                  unit.id,
+                                  "unitName",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="e.g. Strip"
+                              className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
+                            />
+                          </FormField>
+
+                          <FormField
+                            label={`Contains (${form.baseUnit}) *`}
+                          >
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={unit.conversionToBase}
+                              disabled={unit.isBaseUnit}
+                              onChange={(event) =>
+                                updateUnit(
+                                  unit.id,
+                                  "conversionToBase",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="e.g. 10"
+                              className={`${inputClass} disabled:bg-slate-100 disabled:text-slate-500`}
+                            />
+                          </FormField>
+
+                          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3">
+                            <input
+                              type="checkbox"
+                              checked={unit.sellable}
+                              onChange={(event) =>
+                                updateUnit(
+                                  unit.id,
+                                  "sellable",
+                                  event.target.checked,
+                                )
+                              }
+                              className="h-4 w-4 accent-sky-600"
+                            />
+
+                            <span className="text-[10px] font-medium text-slate-700">
+                              Sellable
+                            </span>
+                          </label>
+
+                          <label className="flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3">
+                            <input
+                              type="checkbox"
+                              checked={unit.purchasable}
+                              onChange={(event) =>
+                                updateUnit(
+                                  unit.id,
+                                  "purchasable",
+                                  event.target.checked,
+                                )
+                              }
+                              className="h-4 w-4 accent-sky-600"
+                            />
+
+                            <span className="text-[10px] font-medium text-slate-700">
+                              Purchasable
+                            </span>
+                          </label>
+
+                          <div className="flex h-10 items-center justify-center">
+                            {unit.isBaseUnit ? (
+                              <div
+                                title="Base unit cannot be removed"
+                                className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600"
+                              >
+                                <Package className="h-4 w-4" />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removePackagingUnit(unit.id)
+                                }
+                                title="Remove unit"
+                                className="flex h-9 w-9 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {unit.isBaseUnit ? (
+                          <p className="mt-3 text-[9px] text-emerald-700">
+                            Base unit always has conversion ×1.
+                          </p>
+                        ) : (
+                          <p className="mt-3 text-[9px] text-slate-400">
+                            1 {unit.unitName || "unit"} ={" "}
+                            {unit.conversionToBase || "?"}{" "}
+                            {form.baseUnit}
+                          </p>
+                        )}
+                      </div>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Purchase Price (৳)
-                  </label>
-
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.purchasePrice}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        purchasePrice:
-                          event.target.value,
-                      })
-                    }
-                    placeholder="0"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
+                {/* CONTROL */}
+                <div className="border-t border-slate-200 pt-6">
+                  <SectionTitle
+                    title="Medicine Controls"
+                    description="Used later by billing, purchasing and authorization rules."
                   />
-                </div>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Selling Price (৳)
-                  </label>
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="flex min-h-[58px] cursor-pointer items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
+                        <div>
+                          <p className="text-[11px] font-medium text-slate-800">
+                            Prescription Required
+                          </p>
 
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.sellingPrice}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        sellingPrice:
-                          event.target.value,
-                      })
-                    }
-                    placeholder="0"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
+                          <p className="mt-1 text-[9px] text-slate-400">
+                            Mark medicine as prescription-controlled.
+                          </p>
+                        </div>
 
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Stock Quantity
-                  </label>
+                        <input
+                          type="checkbox"
+                          checked={form.prescriptionRequired}
+                          onChange={(event) =>
+                            setForm((currentForm) => ({
+                              ...currentForm,
+                              prescriptionRequired:
+                                event.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4 accent-sky-600"
+                        />
+                      </label>
+                    </div>
 
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.stockQuantity}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        stockQuantity:
-                          event.target.value,
-                      })
-                    }
-                    placeholder="0"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Reorder Level
-                  </label>
-
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.reorderLevel}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        reorderLevel:
-                          event.target.value,
-                      })
-                    }
-                    placeholder="0"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Expiry Date
-                  </label>
-
-                  <input
-                    type="date"
-                    value={form.expiryDate}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        expiryDate:
-                          event.target.value,
-                      })
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-[13px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-[12px] font-medium text-slate-700">
-                    Record Status
-                  </label>
-
-                  <select
-                    value={form.status}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        status: event.target
-                          .value as MedicineStatus,
-                      })
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
-                  >
-                    <option value="active">
-                      Active
-                    </option>
-
-                    <option value="inactive">
-                      Inactive
-                    </option>
-                  </select>
+                    <FormField label="Status">
+                      <select
+                        value={form.status}
+                        onChange={(event) =>
+                          setForm((currentForm) => ({
+                            ...currentForm,
+                            status:
+                              event.target
+                                .value as MedicineStatus,
+                          }))
+                        }
+                        className={inputClass}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </FormField>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-4">
+              {/* MODAL FOOTER */}
+              <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-5 text-[13px] font-medium text-slate-600 transition hover:bg-slate-50"
+                  className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  className="h-10 rounded-xl bg-sky-600 px-5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
+                  className="h-10 rounded-xl bg-sky-600 px-5 text-[11px] font-semibold text-white transition hover:bg-sky-700"
                 >
                   {editingMedicine
-                    ? "Update Medicine"
-                    : "Save Medicine"}
+                    ? "Save Changes"
+                    : "Add Medicine"}
                 </button>
               </div>
             </form>
@@ -1154,5 +1645,94 @@ export default function AdminMedicinesPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+const inputClass =
+  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[11px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100";
+
+function TableHead({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <th className="px-4 py-4 text-[10px] font-medium text-slate-500">
+      {children}
+    </th>
+  );
+}
+
+function FormField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className="text-[11px] font-medium text-slate-700">
+          {label}
+        </label>
+
+        {hint ? (
+          <span className="text-[9px] text-slate-400">
+            {hint}
+          </span>
+        ) : null}
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
+function SectionTitle({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div>
+      <h3 className="text-[13px] font-semibold text-slate-900">
+        {title}
+      </h3>
+
+      <p className="mt-1 text-[10px] text-slate-500">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  description,
+}: {
+  label: string;
+  value: number;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-[10px] font-medium text-slate-500">
+        {label}
+      </p>
+
+      <p className="mt-2 text-2xl font-semibold text-slate-900">
+        {value.toLocaleString("en-US")}
+      </p>
+
+      <p className="mt-1 text-[9px] text-slate-400">
+        {description}
+      </p>
+    </div>
   );
 }
