@@ -1,12 +1,9 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Boxes,
   ChartNoAxesColumnIncreasing,
   CircleAlert,
-  ClipboardPlus,
   Package,
   Settings,
-  Tags,
   UserRoundCog,
 } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -17,49 +14,46 @@ type SectionConfig = {
   icon: LucideIcon;
 };
 
+/*
+ * Only pages that do not yet have their own dedicated
+ * page.tsx should stay here.
+ *
+ * Dedicated pages such as:
+ * /admin/categories
+ * /admin/stock
+ * /admin/purchase
+ *
+ * are intentionally NOT included here.
+ */
 const sectionPages: Record<string, SectionConfig> = {
-  categories: {
-    title: "Medicine Categories",
-    description:
-      "Create, update and manage medicine categories from this section.",
-    icon: Tags,
-  },
-  stock: {
-    title: "Stock Management",
-    description:
-      "Check available stock, stock quantities and inventory movements.",
-    icon: Boxes,
-  },
-  purchase: {
-    title: "Purchase Management",
-    description:
-      "Record medicine purchases and manage supplier purchase invoices.",
-    icon: ClipboardPlus,
-  },
   employees: {
     title: "Employee Management",
     description:
       "Add employees, update employee information and control account access.",
     icon: UserRoundCog,
   },
+
   reports: {
     title: "Reports",
     description:
       "View sales, purchase, medicine, customer and inventory reports.",
     icon: ChartNoAxesColumnIncreasing,
   },
+
   "expiry-alerts": {
     title: "Expiry Alerts",
     description:
       "Review medicines that have expired or will expire within the configured period.",
     icon: CircleAlert,
   },
+
   "low-stock-alerts": {
     title: "Low Stock Alerts",
     description:
       "Review medicines that are below their minimum required stock level.",
     icon: Package,
   },
+
   settings: {
     title: "Settings",
     description:
@@ -78,6 +72,7 @@ export default async function AdminSectionPage({
   params,
 }: AdminSectionPageProps) {
   const { section } = await params;
+
   const page = sectionPages[section];
 
   if (!page) {

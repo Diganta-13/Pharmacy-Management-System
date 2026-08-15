@@ -1,15 +1,8 @@
 "use client";
 
-import {
-  FormEvent,
-  ReactNode,
-  useMemo,
-  useState,
-} from "react";
-
+import { FormEvent, ReactNode, useMemo, useState } from "react";
 import {
   Boxes,
-  CalendarDays,
   CheckCircle2,
   Clock3,
   Eye,
@@ -21,10 +14,7 @@ import {
   X,
 } from "lucide-react";
 
-type PurchaseStatus =
-  | "Received"
-  | "Pending"
-  | "Cancelled";
+type PurchaseStatus = "Received" | "Pending" | "Cancelled";
 
 type MedicineUnitConfig = {
   unitName: string;
@@ -45,7 +35,7 @@ type UnitPrice = {
   unitName: string;
   conversionToBase: number;
   sellingPrice: number;
-  mrp: number | null;
+  mrp: number;
 };
 
 type PurchaseItem = {
@@ -75,14 +65,21 @@ type Purchase = {
   supplierInvoiceNo: string;
   purchaseDate: string;
   status: PurchaseStatus;
+
   items: PurchaseItem[];
+
   totalAmount: number;
+
   processedBy: string;
+
+  receivedAt?: string;
+  receivedBy?: string;
 };
 
 type UnitPriceForm = {
   unitName: string;
   conversionToBase: number;
+
   sellingPrice: string;
   mrp: string;
 };
@@ -107,10 +104,17 @@ type PurchaseItemForm = {
 type PurchaseForm = {
   supplier: string;
   supplierInvoiceNo: string;
+
   purchaseDate: string;
+
   status: PurchaseStatus;
+
   items: PurchaseItemForm[];
 };
+
+/* =========================================================
+   SUPPLIERS
+========================================================= */
 
 const suppliers = [
   "Square Pharmaceuticals Ltd.",
@@ -121,12 +125,17 @@ const suppliers = [
   "Eskayef Pharmaceuticals Ltd.",
 ];
 
+/* =========================================================
+   MEDICINE CATALOG
+========================================================= */
+
 const medicineCatalog: MedicineConfig[] = [
   {
     id: "MED-001",
     name: "Napa 500mg",
     genericName: "Paracetamol",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -154,6 +163,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Ace Plus",
     genericName: "Paracetamol + Caffeine",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -181,6 +191,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Napa Extend",
     genericName: "Paracetamol",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -208,6 +219,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Seclo 20mg",
     genericName: "Omeprazole",
     baseUnit: "Capsule",
+
     units: [
       {
         unitName: "Capsule",
@@ -235,6 +247,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Maxpro 20mg",
     genericName: "Esomeprazole",
     baseUnit: "Capsule",
+
     units: [
       {
         unitName: "Capsule",
@@ -262,6 +275,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Sergel 20mg",
     genericName: "Esomeprazole",
     baseUnit: "Capsule",
+
     units: [
       {
         unitName: "Capsule",
@@ -289,6 +303,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Monas 10mg",
     genericName: "Montelukast",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -316,6 +331,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Fexo 120mg",
     genericName: "Fexofenadine",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -343,6 +359,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Amdocal 5mg",
     genericName: "Amlodipine",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -370,6 +387,7 @@ const medicineCatalog: MedicineConfig[] = [
     name: "Ceevit 250mg",
     genericName: "Vitamin C",
     baseUnit: "Tablet",
+
     units: [
       {
         unitName: "Tablet",
@@ -393,41 +411,62 @@ const medicineCatalog: MedicineConfig[] = [
   },
 ];
 
+/* =========================================================
+   INITIAL PURCHASE DATA
+========================================================= */
+
 const initialPurchases: Purchase[] = [
   {
     id: "PUR-2026-001",
+
     supplier: "Beximco Pharmaceuticals Ltd.",
+
     supplierInvoiceNo: "BEX-88201",
+
     purchaseDate: "2026-08-01",
+
     status: "Received",
+
     processedBy: "Admin User",
+
+    receivedBy: "Admin User",
+
+    receivedAt: "2026-08-01T10:00:00.000Z",
+
     totalAmount: 9000,
 
     items: [
       {
         id: "PITEM-001",
+
         medicineId: "MED-001",
+
         medicine: "Napa 500mg",
+
         genericName: "Paracetamol",
+
         baseUnit: "Tablet",
 
         purchaseUnit: "Box",
+
         conversionToBase: 200,
 
         quantity: 50,
+
         baseQuantity: 10000,
 
         unitCost: 180,
 
         batchNo: "NPA-2608-A",
+
         expiryDate: "2027-12-31",
 
         unitPrices: [
           {
-            unitName: "Tablet",
-            conversionToBase: 1,
-            sellingPrice: 1.2,
-            mrp: 1.2,
+            unitName: "Box",
+            conversionToBase: 200,
+            sellingPrice: 240,
+            mrp: 240,
           },
           {
             unitName: "Strip",
@@ -436,10 +475,10 @@ const initialPurchases: Purchase[] = [
             mrp: 12,
           },
           {
-            unitName: "Box",
-            conversionToBase: 200,
-            sellingPrice: 240,
-            mrp: 240,
+            unitName: "Tablet",
+            conversionToBase: 1,
+            sellingPrice: 1.2,
+            mrp: 1.2,
           },
         ],
       },
@@ -448,50 +487,67 @@ const initialPurchases: Purchase[] = [
 
   {
     id: "PUR-2026-002",
+
     supplier: "Square Pharmaceuticals Ltd.",
+
     supplierInvoiceNo: "SQR-55120",
+
     purchaseDate: "2026-08-04",
+
     status: "Received",
+
     processedBy: "Admin User",
+
+    receivedBy: "Admin User",
+
+    receivedAt: "2026-08-04T10:00:00.000Z",
+
     totalAmount: 7800,
 
     items: [
       {
         id: "PITEM-002",
+
         medicineId: "MED-004",
+
         medicine: "Seclo 20mg",
+
         genericName: "Omeprazole",
+
         baseUnit: "Capsule",
 
         purchaseUnit: "Box",
+
         conversionToBase: 100,
 
         quantity: 60,
+
         baseQuantity: 6000,
 
         unitCost: 130,
 
         batchNo: "SCL-2608-B",
+
         expiryDate: "2027-04-30",
 
         unitPrices: [
           {
-            unitName: "Capsule",
-            conversionToBase: 1,
-            sellingPrice: 1.8,
-            mrp: 2,
+            unitName: "Box",
+            conversionToBase: 100,
+            sellingPrice: 200,
+            mrp: 200,
           },
           {
             unitName: "Strip",
             conversionToBase: 10,
-            sellingPrice: 18,
+            sellingPrice: 20,
             mrp: 20,
           },
           {
-            unitName: "Box",
-            conversionToBase: 100,
-            sellingPrice: 180,
-            mrp: 200,
+            unitName: "Capsule",
+            conversionToBase: 1,
+            sellingPrice: 2,
+            mrp: 2,
           },
         ],
       },
@@ -500,56 +556,73 @@ const initialPurchases: Purchase[] = [
 
   {
     id: "PUR-2026-003",
+
     supplier: "Renata Limited",
+
     supplierInvoiceNo: "REN-77342",
+
     purchaseDate: "2026-08-08",
+
     status: "Pending",
+
     processedBy: "Admin User",
+
     totalAmount: 5500,
 
     items: [
       {
         id: "PITEM-003",
+
         medicineId: "MED-005",
+
         medicine: "Maxpro 20mg",
+
         genericName: "Esomeprazole",
+
         baseUnit: "Capsule",
 
         purchaseUnit: "Box",
+
         conversionToBase: 100,
 
         quantity: 50,
+
         baseQuantity: 5000,
 
         unitCost: 110,
 
         batchNo: "MXP-2608-C",
+
         expiryDate: "2028-01-31",
 
         unitPrices: [
           {
-            unitName: "Capsule",
-            conversionToBase: 1,
-            sellingPrice: 1.6,
-            mrp: 1.8,
+            unitName: "Box",
+            conversionToBase: 100,
+            sellingPrice: 180,
+            mrp: 180,
           },
           {
             unitName: "Strip",
             conversionToBase: 10,
-            sellingPrice: 16,
+            sellingPrice: 18,
             mrp: 18,
           },
           {
-            unitName: "Box",
-            conversionToBase: 100,
-            sellingPrice: 160,
-            mrp: 180,
+            unitName: "Capsule",
+            conversionToBase: 1,
+            sellingPrice: 1.8,
+            mrp: 1.8,
           },
         ],
       },
     ],
   },
 ];
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 function getTodayLocalDate() {
   const today = new Date();
@@ -576,12 +649,15 @@ function createEmptyItem(
     medicineId: "",
 
     purchaseUnit: "",
+
     conversionToBase: 1,
 
     quantity: "",
+
     unitCost: "",
 
     batchNo: "",
+
     expiryDate: "",
 
     unitPrices: [],
@@ -591,105 +667,227 @@ function createEmptyItem(
 function createEmptyForm(): PurchaseForm {
   return {
     supplier: "",
+
     supplierInvoiceNo: "",
-    purchaseDate: getTodayLocalDate(),
+
+    purchaseDate:
+      getTodayLocalDate(),
+
     status: "Received",
-    items: [createEmptyItem()],
+
+    items: [
+      createEmptyItem(),
+    ],
   };
 }
 
-function formatDate(date: string) {
+function formatDate(
+  date: string,
+) {
   if (!date) {
     return "-";
   }
 
-  const [year, month, day] =
-    date.split("-");
+  const [
+    year,
+    month,
+    day,
+  ] = date.split("-");
 
   return `${day}-${month}-${year}`;
 }
 
+function formatMoney(
+  value: number,
+) {
+  return value.toLocaleString(
+    "en-US",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    },
+  );
+}
+
+function roundMoney(
+  value: number,
+) {
+  return (
+    Math.round(
+      (value +
+        Number.EPSILON) *
+        100,
+    ) / 100
+  );
+}
+
+/*
+  Finds the largest sellable unit.
+
+  Example:
+
+  Tablet = 1
+  Strip = 10
+  Box = 200
+
+  Primary pricing unit = Box
+*/
+
+function getPrimaryPricingUnit(
+  unitPrices: UnitPriceForm[],
+) {
+  if (
+    unitPrices.length === 0
+  ) {
+    return null;
+  }
+
+  return unitPrices.reduce(
+    (
+      largest,
+      current,
+    ) =>
+      current.conversionToBase >
+      largest.conversionToBase
+        ? current
+        : largest,
+  );
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
 export default function PurchasePage() {
-  const [purchases, setPurchases] =
+  const [
+    purchases,
+    setPurchases,
+  ] =
     useState<Purchase[]>(
       initialPurchases,
     );
 
-  const [searchTerm, setSearchTerm] =
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] =
     useState("");
 
-  const [statusFilter, setStatusFilter] =
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] =
     useState("All");
 
   const [
     isPurchaseModalOpen,
     setIsPurchaseModalOpen,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     selectedPurchase,
     setSelectedPurchase,
-  ] = useState<Purchase | null>(null);
+  ] =
+    useState<Purchase | null>(
+      null,
+    );
 
-  const [form, setForm] =
+  const [
+    form,
+    setForm,
+  ] =
     useState<PurchaseForm>(
       createEmptyForm(),
     );
 
-  const formTotal = useMemo(() => {
-    return form.items.reduce(
-      (total, item) => {
-        const quantity =
-          Number(item.quantity) || 0;
+  /* =======================================================
+     TOTAL
+  ======================================================= */
 
-        const unitCost =
-          Number(item.unitCost) || 0;
+  const formTotal =
+    useMemo(() => {
+      return form.items.reduce(
+        (
+          total,
+          item,
+        ) => {
+          const quantity =
+            Number(
+              item.quantity,
+            ) || 0;
 
-        return (
-          total +
-          quantity * unitCost
-        );
-      },
-      0,
-    );
-  }, [form.items]);
+          const unitCost =
+            Number(
+              item.unitCost,
+            ) || 0;
 
-  const statistics = useMemo(() => {
-    const received =
-      purchases.filter(
-        (purchase) =>
-          purchase.status ===
-          "Received",
-      ).length;
+          return (
+            total +
+            quantity *
+              unitCost
+          );
+        },
+        0,
+      );
+    }, [
+      form.items,
+    ]);
 
-    const pending =
-      purchases.filter(
-        (purchase) =>
-          purchase.status ===
-          "Pending",
-      ).length;
+  /* =======================================================
+     STATISTICS
+  ======================================================= */
 
-    const totalValue =
-      purchases
-        .filter(
+  const statistics =
+    useMemo(() => {
+      const received =
+        purchases.filter(
           (purchase) =>
-            purchase.status !==
-            "Cancelled",
-        )
-        .reduce(
-          (sum, purchase) =>
-            sum +
-            purchase.totalAmount,
-          0,
-        );
+            purchase.status ===
+            "Received",
+        ).length;
 
-    return {
-      total: purchases.length,
-      received,
-      pending,
-      totalValue,
-    };
-  }, [purchases]);
+      const pending =
+        purchases.filter(
+          (purchase) =>
+            purchase.status ===
+            "Pending",
+        ).length;
+
+      const totalValue =
+        purchases
+          .filter(
+            (purchase) =>
+              purchase.status !==
+              "Cancelled",
+          )
+          .reduce(
+            (
+              sum,
+              purchase,
+            ) =>
+              sum +
+              purchase.totalAmount,
+            0,
+          );
+
+      return {
+        total:
+          purchases.length,
+
+        received,
+
+        pending,
+
+        totalValue,
+      };
+    }, [
+      purchases,
+    ]);
+
+  /* =======================================================
+     FILTER
+  ======================================================= */
 
   const filteredPurchases =
     useMemo(() => {
@@ -703,14 +901,23 @@ export default function PurchasePage() {
           const matchesSearch =
             purchase.id
               .toLowerCase()
-              .includes(search) ||
+              .includes(
+                search,
+              ) ||
+
             purchase.supplier
               .toLowerCase()
-              .includes(search) ||
+              .includes(
+                search,
+              ) ||
+
             purchase
               .supplierInvoiceNo
               .toLowerCase()
-              .includes(search) ||
+              .includes(
+                search,
+              ) ||
+
             purchase.items.some(
               (item) =>
                 item.medicine
@@ -718,6 +925,7 @@ export default function PurchasePage() {
                   .includes(
                     search,
                   ) ||
+
                 item.batchNo
                   .toLowerCase()
                   .includes(
@@ -743,20 +951,30 @@ export default function PurchasePage() {
       statusFilter,
     ]);
 
+  /* =======================================================
+     PURCHASE ID
+  ======================================================= */
+
   function generatePurchaseId() {
     const year =
       new Date().getFullYear();
 
     const highestNumber =
       purchases.reduce(
-        (highest, purchase) => {
+        (
+          highest,
+          purchase,
+        ) => {
           const parts =
-            purchase.id.split("-");
+            purchase.id.split(
+              "-",
+            );
 
           const number =
             Number(
               parts[
-                parts.length - 1
+                parts.length -
+                  1
               ],
             ) || 0;
 
@@ -770,11 +988,20 @@ export default function PurchasePage() {
 
     return `PUR-${year}-${String(
       highestNumber + 1,
-    ).padStart(3, "0")}`;
+    ).padStart(
+      3,
+      "0",
+    )}`;
   }
 
+  /* =======================================================
+     MODAL
+  ======================================================= */
+
   function openPurchaseModal() {
-    setForm(createEmptyForm());
+    setForm(
+      createEmptyForm(),
+    );
 
     setIsPurchaseModalOpen(
       true,
@@ -786,12 +1013,20 @@ export default function PurchasePage() {
       false,
     );
 
-    setForm(createEmptyForm());
+    setForm(
+      createEmptyForm(),
+    );
   }
+
+  /* =======================================================
+     ITEMS
+  ======================================================= */
 
   function addItem() {
     setForm(
-      (currentForm) => ({
+      (
+        currentForm,
+      ) => ({
         ...currentForm,
 
         items: [
@@ -810,7 +1045,9 @@ export default function PurchasePage() {
     itemId: string,
   ) {
     setForm(
-      (currentForm) => {
+      (
+        currentForm,
+      ) => {
         if (
           currentForm.items
             .length === 1
@@ -832,6 +1069,10 @@ export default function PurchasePage() {
     );
   }
 
+  /* =======================================================
+     MEDICINE SELECT
+  ======================================================= */
+
   function updateMedicine(
     itemId: string,
     medicineId: string,
@@ -844,7 +1085,9 @@ export default function PurchasePage() {
       );
 
     setForm(
-      (currentForm) => ({
+      (
+        currentForm,
+      ) => ({
         ...currentForm,
 
         items:
@@ -870,9 +1113,28 @@ export default function PurchasePage() {
                   conversionToBase:
                     1,
 
+                  quantity: "",
+
+                  unitCost: "",
+
+                  batchNo: "",
+
+                  expiryDate: "",
+
                   unitPrices: [],
                 };
               }
+
+              /*
+                Purchasable:
+
+                Strip
+                Box
+
+                Largest unit becomes default.
+
+                So Box comes first.
+              */
 
               const purchasableUnits =
                 medicine.units.filter(
@@ -881,7 +1143,41 @@ export default function PurchasePage() {
                 );
 
               const defaultPurchaseUnit =
-                purchasableUnits[0];
+                purchasableUnits.reduce(
+                  (
+                    largest,
+                    current,
+                  ) =>
+                    current
+                      .conversionToBase >
+                    largest
+                      .conversionToBase
+                      ? current
+                      : largest,
+                );
+
+              /*
+                Selling price display order:
+
+                Box
+                Strip
+                Tablet
+              */
+
+              const sellingUnits =
+                medicine.units
+                  .filter(
+                    (unit) =>
+                      unit.sellable,
+                  )
+                  .sort(
+                    (
+                      a,
+                      b,
+                    ) =>
+                      b.conversionToBase -
+                      a.conversionToBase,
+                  );
 
               return {
                 ...item,
@@ -899,26 +1195,29 @@ export default function PurchasePage() {
                     ?.conversionToBase ??
                   1,
 
+                quantity: "",
+
+                unitCost: "",
+
+                batchNo: "",
+
+                expiryDate: "",
+
                 unitPrices:
-                  medicine.units
-                    .filter(
-                      (unit) =>
-                        unit.sellable,
-                    )
-                    .map(
-                      (unit) => ({
-                        unitName:
-                          unit.unitName,
+                  sellingUnits.map(
+                    (unit) => ({
+                      unitName:
+                        unit.unitName,
 
-                        conversionToBase:
-                          unit.conversionToBase,
+                      conversionToBase:
+                        unit.conversionToBase,
 
-                        sellingPrice:
-                          "",
+                      sellingPrice:
+                        "",
 
-                        mrp: "",
-                      }),
-                    ),
+                      mrp: "",
+                    }),
+                  ),
               };
             },
           ),
@@ -926,12 +1225,18 @@ export default function PurchasePage() {
     );
   }
 
+  /* =======================================================
+     PURCHASE UNIT
+  ======================================================= */
+
   function updatePurchaseUnit(
     itemId: string,
     purchaseUnit: string,
   ) {
     setForm(
-      (currentForm) => ({
+      (
+        currentForm,
+      ) => ({
         ...currentForm,
 
         items:
@@ -974,44 +1279,25 @@ export default function PurchasePage() {
     );
   }
 
+  /* =======================================================
+     ITEM FIELD
+  ======================================================= */
+
   function updateItemField(
     itemId: string,
+
     field:
       | "quantity"
       | "unitCost"
       | "batchNo"
       | "expiryDate",
+
     value: string,
   ) {
     setForm(
-      (currentForm) => ({
-        ...currentForm,
-
-        items:
-          currentForm.items.map(
-            (item) =>
-              item.id === itemId
-                ? {
-                    ...item,
-                    [field]:
-                      value,
-                  }
-                : item,
-          ),
-      }),
-    );
-  }
-
-  function updatePrice(
-    itemId: string,
-    unitName: string,
-    field:
-      | "sellingPrice"
-      | "mrp",
-    value: string,
-  ) {
-    setForm(
-      (currentForm) => ({
+      (
+        currentForm,
+      ) => ({
         ...currentForm,
 
         items:
@@ -1022,27 +1308,193 @@ export default function PurchasePage() {
                 ? {
                     ...item,
 
-                    unitPrices:
-                      item.unitPrices.map(
-                        (
-                          price,
-                        ) =>
-                          price.unitName ===
-                          unitName
-                            ? {
-                                ...price,
-
-                                [field]:
-                                  value,
-                              }
-                            : price,
-                      ),
+                    [field]:
+                      value,
                   }
                 : item,
           ),
       }),
     );
   }
+
+  /* =======================================================
+     BOX MRP → AUTO UNIT PRICES
+  ======================================================= */
+
+  function updatePrimaryMrp(
+    itemId: string,
+    value: string,
+  ) {
+    /*
+      Important:
+
+      Allows:
+
+      ""
+      "2"
+      "24"
+      "240"
+      "240."
+      "240.5"
+      "240.50"
+
+      This fixes the old 2 → 2.00 typing problem.
+    */
+
+    const validInput =
+      /^\d*(\.\d{0,2})?$/.test(
+        value,
+      );
+
+    if (!validInput) {
+      return;
+    }
+
+    setForm(
+      (
+        currentForm,
+      ) => ({
+        ...currentForm,
+
+        items:
+          currentForm.items.map(
+            (item) => {
+              if (
+                item.id !==
+                itemId
+              ) {
+                return item;
+              }
+
+              const primaryUnit =
+                getPrimaryPricingUnit(
+                  item.unitPrices,
+                );
+
+              if (!primaryUnit) {
+                return item;
+              }
+
+              /*
+                User used Backspace and removed everything
+              */
+
+              if (
+                value === ""
+              ) {
+                return {
+                  ...item,
+
+                  unitPrices:
+                    item.unitPrices.map(
+                      (price) => ({
+                        ...price,
+
+                        sellingPrice:
+                          "",
+
+                        mrp: "",
+                      }),
+                    ),
+                };
+              }
+
+              const numericValue =
+                Number(value);
+
+              if (
+                Number.isNaN(
+                  numericValue,
+                )
+              ) {
+                return item;
+              }
+
+              const updatedPrices =
+                item.unitPrices.map(
+                  (price) => {
+                    /*
+                      Largest unit:
+
+                      Box
+
+                      Keep raw typed value.
+                    */
+
+                    if (
+                      price.unitName ===
+                      primaryUnit.unitName
+                    ) {
+                      return {
+                        ...price,
+
+                        mrp: value,
+
+                        sellingPrice:
+                          numericValue >
+                          0
+                            ? roundMoney(
+                                numericValue,
+                              ).toFixed(
+                                2,
+                              )
+                            : "",
+                      };
+                    }
+
+                    /*
+                      Auto calculation:
+
+                      Unit Price
+                      =
+                      Box MRP × Unit Conversion
+                      ÷ Box Conversion
+                    */
+
+                    const calculatedPrice =
+                      roundMoney(
+                        (numericValue *
+                          price.conversionToBase) /
+                          primaryUnit.conversionToBase,
+                      );
+
+                    return {
+                      ...price,
+
+                      sellingPrice:
+                        numericValue >
+                        0
+                          ? calculatedPrice.toFixed(
+                              2,
+                            )
+                          : "",
+
+                      mrp:
+                        numericValue >
+                        0
+                          ? calculatedPrice.toFixed(
+                              2,
+                            )
+                          : "",
+                    };
+                  },
+                );
+
+              return {
+                ...item,
+
+                unitPrices:
+                  updatedPrices,
+              };
+            },
+          ),
+      }),
+    );
+  }
+
+  /* =======================================================
+     VALIDATION
+  ======================================================= */
 
   function validateForm() {
     if (!form.supplier) {
@@ -1053,7 +1505,9 @@ export default function PurchasePage() {
       return false;
     }
 
-    if (!form.purchaseDate) {
+    if (
+      !form.purchaseDate
+    ) {
       window.alert(
         "Purchase date is required.",
       );
@@ -1062,7 +1516,8 @@ export default function PurchasePage() {
     }
 
     if (
-      form.items.length === 0
+      form.items.length ===
+      0
     ) {
       window.alert(
         "Add at least one purchase item.",
@@ -1081,7 +1536,9 @@ export default function PurchasePage() {
       index++
     ) {
       const item =
-        form.items[index];
+        form.items[
+          index
+        ];
 
       const itemNumber =
         index + 1;
@@ -1107,7 +1564,9 @@ export default function PurchasePage() {
       }
 
       const quantity =
-        Number(item.quantity);
+        Number(
+          item.quantity,
+        );
 
       if (
         !Number.isInteger(
@@ -1123,7 +1582,9 @@ export default function PurchasePage() {
       }
 
       const unitCost =
-        Number(item.unitCost);
+        Number(
+          item.unitCost,
+        );
 
       if (
         Number.isNaN(
@@ -1180,7 +1641,7 @@ export default function PurchasePage() {
         )
       ) {
         window.alert(
-          `The same medicine and batch number is entered more than once.`,
+          "The same medicine and batch number is entered more than once.",
         );
 
         return false;
@@ -1190,10 +1651,16 @@ export default function PurchasePage() {
         duplicateKey,
       );
 
-      if (
-        item.unitPrices
-          .length === 0
-      ) {
+      /*
+        Only primary package MRP is required.
+      */
+
+      const primaryUnit =
+        getPrimaryPricingUnit(
+          item.unitPrices,
+        );
+
+      if (!primaryUnit) {
         window.alert(
           `Selling units are not configured for item ${itemNumber}.`,
         );
@@ -1201,54 +1668,59 @@ export default function PurchasePage() {
         return false;
       }
 
-      for (const price of item.unitPrices) {
+      const primaryMrp =
+        Number(
+          primaryUnit.mrp,
+        );
+
+      if (
+        !primaryUnit.mrp.trim() ||
+        Number.isNaN(
+          primaryMrp,
+        ) ||
+        primaryMrp <= 0
+      ) {
+        window.alert(
+          `Enter a valid ${primaryUnit.unitName} MRP for item ${itemNumber}.`,
+        );
+
+        return false;
+      }
+
+      /*
+        Check calculated prices.
+      */
+
+      for (
+        const price of
+        item.unitPrices
+      ) {
         const sellingPrice =
           Number(
             price.sellingPrice,
+          );
+
+        const mrp =
+          Number(
+            price.mrp,
           );
 
         if (
           Number.isNaN(
             sellingPrice,
           ) ||
-          sellingPrice <= 0
+          sellingPrice <=
+            0 ||
+          Number.isNaN(
+            mrp,
+          ) ||
+          mrp <= 0
         ) {
           window.alert(
-            `Enter selling price for ${price.unitName} in item ${itemNumber}.`,
+            `Price calculation failed for ${price.unitName} in item ${itemNumber}.`,
           );
 
           return false;
-        }
-
-        if (
-          price.mrp.trim()
-        ) {
-          const mrp =
-            Number(price.mrp);
-
-          if (
-            Number.isNaN(
-              mrp,
-            ) ||
-            mrp <= 0
-          ) {
-            window.alert(
-              `Enter valid MRP for ${price.unitName} in item ${itemNumber}.`,
-            );
-
-            return false;
-          }
-
-          if (
-            sellingPrice >
-            mrp
-          ) {
-            window.alert(
-              `Selling price cannot be greater than MRP for ${price.unitName}.`,
-            );
-
-            return false;
-          }
         }
       }
     }
@@ -1256,8 +1728,13 @@ export default function PurchasePage() {
     return true;
   }
 
+  /* =======================================================
+     SAVE PURCHASE
+  ======================================================= */
+
   function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
+    event:
+      FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
@@ -1268,7 +1745,10 @@ export default function PurchasePage() {
     const purchaseItems:
       PurchaseItem[] =
       form.items.map(
-        (item, index) => {
+        (
+          item,
+          index,
+        ) => {
           const medicine =
             medicineCatalog.find(
               (medicine) =>
@@ -1314,8 +1794,7 @@ export default function PurchasePage() {
               ),
 
             batchNo:
-              item.batchNo
-                .trim(),
+              item.batchNo.trim(),
 
             expiryDate:
               item.expiryDate,
@@ -1335,27 +1814,29 @@ export default function PurchasePage() {
                     ),
 
                   mrp:
-                    price.mrp.trim()
-                      ? Number(
-                          price.mrp,
-                        )
-                      : null,
+                    Number(
+                      price.mrp,
+                    ),
                 }),
               ),
           };
         },
       );
 
+    const isReceived =
+      form.status ===
+      "Received";
+
     const newPurchase:
       Purchase = {
-      id: generatePurchaseId(),
+      id:
+        generatePurchaseId(),
 
       supplier:
         form.supplier,
 
       supplierInvoiceNo:
-        form.supplierInvoiceNo
-          .trim(),
+        form.supplierInvoiceNo.trim(),
 
       purchaseDate:
         form.purchaseDate,
@@ -1371,10 +1852,22 @@ export default function PurchasePage() {
 
       processedBy:
         "Admin User",
+
+      receivedAt:
+        isReceived
+          ? new Date().toISOString()
+          : undefined,
+
+      receivedBy:
+        isReceived
+          ? "Admin User"
+          : undefined,
     };
 
     setPurchases(
-      (currentPurchases) => [
+      (
+        currentPurchases,
+      ) => [
         newPurchase,
         ...currentPurchases,
       ],
@@ -1383,17 +1876,94 @@ export default function PurchasePage() {
     closePurchaseModal();
   }
 
+  /* =======================================================
+     PENDING → RECEIVED
+  ======================================================= */
+
+  function receivePurchase(
+    purchaseId: string,
+  ) {
+    const purchase =
+      purchases.find(
+        (purchase) =>
+          purchase.id ===
+          purchaseId,
+      );
+
+    /*
+      Critical protection:
+
+      Only Pending purchases can be received.
+    */
+
+    if (
+      !purchase ||
+      purchase.status !==
+        "Pending"
+    ) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Receive ${purchase.id}?\n\nAfter receiving, this purchase cannot be received a second time.`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const updatedPurchase:
+      Purchase = {
+      ...purchase,
+
+      status:
+        "Received",
+
+      receivedAt:
+        new Date().toISOString(),
+
+      receivedBy:
+        "Admin User",
+    };
+
+    setPurchases(
+      (
+        currentPurchases,
+      ) =>
+        currentPurchases.map(
+          (purchase) =>
+            purchase.id ===
+            purchaseId
+              ? updatedPurchase
+              : purchase,
+        ),
+    );
+
+    /*
+      Keep modal open and immediately
+      show Received status.
+    */
+
+    setSelectedPurchase(
+      updatedPurchase,
+    );
+  }
+
   function getStatusClass(
-    status: PurchaseStatus,
+    status:
+      PurchaseStatus,
   ) {
     if (
-      status === "Received"
+      status ===
+      "Received"
     ) {
       return "bg-emerald-100 text-emerald-700";
     }
 
     if (
-      status === "Pending"
+      status ===
+      "Pending"
     ) {
       return "bg-amber-100 text-amber-700";
     }
@@ -1401,20 +1971,25 @@ export default function PurchasePage() {
     return "bg-rose-100 text-rose-600";
   }
 
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <>
       <div className="mx-auto w-full max-w-[1600px] space-y-5">
 
         {/* HEADER */}
+
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
           <div>
             <h1 className="text-xl font-semibold text-slate-900">
               Purchase
             </h1>
 
             <p className="mt-1 text-[12px] text-slate-500">
-              Receive medicines with batch, expiry,
-              packaging and batch-specific pricing.
+              Receive medicines with batch, expiry, packaging and batch-specific pricing.
             </p>
           </div>
 
@@ -1426,13 +2001,18 @@ export default function PurchasePage() {
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
           >
             <Plus className="h-4 w-4" />
+
             New Purchase
           </button>
+
         </div>
 
-        {/* INFO */}
+        {/* INVENTORY INFO */}
+
         <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3">
+
           <div className="flex gap-3">
+
             <PackagePlus className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
 
             <div>
@@ -1441,23 +2021,26 @@ export default function PurchasePage() {
               </p>
 
               <p className="mt-1 text-[11px] leading-5 text-sky-700">
-                Received purchases will later create
-                inventory batches and stock movements.
-                Pending purchases will not increase
-                available stock until received.
+                Received purchases are inventory-ready. Pending purchases remain outside available stock until they are received.
               </p>
             </div>
+
           </div>
+
         </div>
 
-        {/* STATISTICS */}
+        {/* STAT CARDS */}
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+
           <StatCard
             icon={
               <ShoppingBag className="h-4 w-4" />
             }
             label="Total Purchases"
-            value={statistics.total}
+            value={
+              statistics.total
+            }
           />
 
           <StatCard
@@ -1465,7 +2048,9 @@ export default function PurchasePage() {
               <CheckCircle2 className="h-4 w-4" />
             }
             label="Received"
-            value={statistics.received}
+            value={
+              statistics.received
+            }
           />
 
           <StatCard
@@ -1473,7 +2058,9 @@ export default function PurchasePage() {
               <Clock3 className="h-4 w-4" />
             }
             label="Pending"
-            value={statistics.pending}
+            value={
+              statistics.pending
+            }
           />
 
           <StatCard
@@ -1481,17 +2068,21 @@ export default function PurchasePage() {
               <Boxes className="h-4 w-4" />
             }
             label="Purchase Value"
-            value={`৳${statistics.totalValue.toLocaleString(
-              "en-US",
+            value={`৳${formatMoney(
+              statistics.totalValue,
             )}`}
           />
+
         </div>
 
         {/* SEARCH */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
 
-            <div className="relative">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+
+          <div className="flex flex-col gap-3 lg:flex-row">
+
+            <div className="relative flex-1">
+
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
               <input
@@ -1508,12 +2099,9 @@ export default function PurchasePage() {
                   )
                 }
                 placeholder="Search purchase, supplier, medicine or batch..."
-                className={inputClass}
-                style={{
-                  paddingLeft:
-                    "2.5rem",
-                }}
+                className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-[11px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
               />
+
             </div>
 
             <select
@@ -1528,9 +2116,7 @@ export default function PurchasePage() {
                     .value,
                 )
               }
-              className={
-                inputClass
-              }
+              className="h-10 min-w-[210px] rounded-xl border border-slate-200 bg-white px-3 text-[11px] text-slate-600 outline-none"
             >
               <option value="All">
                 All Status
@@ -1548,17 +2134,21 @@ export default function PurchasePage() {
                 Cancelled
               </option>
             </select>
-          </div>
-        </section>
 
-        {/* PURCHASE TABLE */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          </div>
+
+        </div>
+
+        {/* TABLE */}
+
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
           <div className="overflow-x-auto">
 
-            <table className="w-full min-w-[1050px]">
+            <table className="w-full min-w-[1150px]">
 
               <thead>
+
                 <tr className="border-b border-slate-200 bg-slate-50/80">
 
                   <TableHead>
@@ -1596,71 +2186,76 @@ export default function PurchasePage() {
                   <TableHead>
                     Action
                   </TableHead>
+
                 </tr>
+
               </thead>
 
               <tbody>
+
                 {filteredPurchases.map(
                   (
                     purchase,
                   ) => (
+
                     <tr
                       key={
                         purchase.id
                       }
-                      className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
+                      className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50"
                     >
 
-                      <td className="px-4 py-4 font-mono text-[11px] font-medium text-sky-700">
+                      <td className="px-4 py-5 font-mono text-[10px] text-sky-700">
                         {
                           purchase.id
                         }
                       </td>
 
-                      <td className="px-4 py-4">
-                        <p className="text-[11px] font-medium text-slate-800">
-                          {
-                            purchase.supplier
-                          }
-                        </p>
+                      <td className="px-4 py-5 text-[11px] font-medium text-slate-900">
+                        {
+                          purchase.supplier
+                        }
                       </td>
 
-                      <td className="px-4 py-4 text-[10px] text-slate-500">
-                        {purchase
-                          .supplierInvoiceNo ||
+                      <td className="px-4 py-5 text-[10px] text-slate-500">
+                        {purchase.supplierInvoiceNo ||
                           "-"}
                       </td>
 
-                      <td className="px-4 py-4 text-[10px] text-slate-500">
+                      <td className="px-4 py-5 text-[10px] text-slate-500">
                         {formatDate(
                           purchase.purchaseDate,
                         )}
                       </td>
 
-                      <td className="px-4 py-4 text-[11px] text-slate-700">
+                      <td className="px-4 py-5 text-[10px] text-slate-700">
                         {
-                          purchase
-                            .items
-                            .length
+                          purchase.items.length
                         }
                       </td>
 
-                      <td className="px-4 py-4 text-[11px] text-slate-700">
+                      <td className="px-4 py-5 text-[10px] text-slate-700">
                         {
-                          purchase
-                            .items
-                            .length
+                          new Set(
+                            purchase.items.map(
+                              (
+                                item,
+                              ) =>
+                                item.batchNo,
+                            ),
+                          ).size
                         }
                       </td>
 
-                      <td className="px-4 py-4 text-[12px] font-semibold text-emerald-700">
+                      <td className="px-4 py-5 text-[11px] font-semibold text-emerald-700">
                         ৳
-                        {purchase.totalAmount.toLocaleString(
-                          "en-US",
+                        {formatMoney(
+                          purchase.totalAmount,
                         )}
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-5">
+
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-medium ${getStatusClass(
                             purchase.status,
@@ -1670,9 +2265,11 @@ export default function PurchasePage() {
                             purchase.status
                           }
                         </span>
+
                       </td>
 
-                      <td className="px-4 py-4">
+                      <td className="px-4 py-5">
+
                         <button
                           type="button"
                           onClick={() =>
@@ -1680,48 +2277,45 @@ export default function PurchasePage() {
                               purchase,
                             )
                           }
-                          title="View purchase"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 transition hover:bg-sky-50"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 hover:bg-sky-50"
+                          title="View Purchase"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
+
                       </td>
+
                     </tr>
+
                   ),
                 )}
 
-                {filteredPurchases.length ===
-                0 ? (
-                  <tr>
-                    <td
-                      colSpan={
-                        9
-                      }
-                      className="px-5 py-16 text-center"
-                    >
-                      <Search className="mx-auto h-7 w-7 text-slate-300" />
-
-                      <p className="mt-3 text-sm font-medium text-slate-700">
-                        No purchases found
-                      </p>
-                    </td>
-                  </tr>
-                ) : null}
               </tbody>
+
             </table>
+
           </div>
-        </section>
+
+        </div>
+
       </div>
 
-      {/* NEW PURCHASE MODAL */}
+      {/* ===================================================
+          NEW PURCHASE MODAL
+      =================================================== */}
+
       {isPurchaseModalOpen ? (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
 
-          <div className="max-h-[95vh] w-full max-w-[1100px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+          <div className="max-h-[94vh] w-full max-w-[1200px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+
+            {/* HEADER */}
 
             <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
 
               <div>
+
                 <h2 className="text-base font-semibold text-slate-950">
                   New Purchase
                 </h2>
@@ -1729,6 +2323,7 @@ export default function PurchasePage() {
                 <p className="mt-1 text-[10px] text-slate-500">
                   Receive batch and pricing information accurately.
                 </p>
+
               </div>
 
               <button
@@ -1740,6 +2335,7 @@ export default function PurchasePage() {
               >
                 <X className="h-5 w-5" />
               </button>
+
             </div>
 
             <form
@@ -1747,10 +2343,13 @@ export default function PurchasePage() {
                 handleSubmit
               }
             >
+
               <div className="space-y-6 p-5">
 
-                {/* PURCHASE HEADER */}
-                <div>
+                {/* PURCHASE INFO */}
+
+                <section>
+
                   <SectionTitle
                     title="Purchase Information"
                     description="Supplier and receiving information."
@@ -1759,6 +2358,7 @@ export default function PurchasePage() {
                   <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 
                     <FormField label="Supplier *">
+
                       <select
                         value={
                           form.supplier
@@ -1766,23 +2366,19 @@ export default function PurchasePage() {
                         onChange={(
                           event,
                         ) =>
-                          setForm(
-                            (
-                              current,
-                            ) => ({
-                              ...current,
+                          setForm({
+                            ...form,
 
-                              supplier:
-                                event
-                                  .target
-                                  .value,
-                            }),
-                          )
+                            supplier:
+                              event.target
+                                .value,
+                          })
                         }
                         className={
                           inputClass
                         }
                       >
+
                         <option value="">
                           Select supplier
                         </option>
@@ -1805,38 +2401,39 @@ export default function PurchasePage() {
                             </option>
                           ),
                         )}
+
                       </select>
+
                     </FormField>
 
-                    <FormField label="Supplier Invoice No.">
+                    <FormField label="Supplier Invoice No">
+
                       <input
+                        type="text"
                         value={
                           form.supplierInvoiceNo
                         }
                         onChange={(
                           event,
                         ) =>
-                          setForm(
-                            (
-                              current,
-                            ) => ({
-                              ...current,
+                          setForm({
+                            ...form,
 
-                              supplierInvoiceNo:
-                                event
-                                  .target
-                                  .value,
-                            }),
-                          )
+                            supplierInvoiceNo:
+                              event.target
+                                .value,
+                          })
                         }
-                        placeholder="e.g. INV-45892"
+                        placeholder="e.g. INV-1213"
                         className={
                           inputClass
                         }
                       />
+
                     </FormField>
 
                     <FormField label="Purchase Date *">
+
                       <input
                         type="date"
                         value={
@@ -1845,26 +2442,23 @@ export default function PurchasePage() {
                         onChange={(
                           event,
                         ) =>
-                          setForm(
-                            (
-                              current,
-                            ) => ({
-                              ...current,
+                          setForm({
+                            ...form,
 
-                              purchaseDate:
-                                event
-                                  .target
-                                  .value,
-                            }),
-                          )
+                            purchaseDate:
+                              event.target
+                                .value,
+                          })
                         }
                         className={
                           inputClass
                         }
                       />
+
                     </FormField>
 
                     <FormField label="Status *">
+
                       <select
                         value={
                           form.status
@@ -1872,23 +2466,19 @@ export default function PurchasePage() {
                         onChange={(
                           event,
                         ) =>
-                          setForm(
-                            (
-                              current,
-                            ) => ({
-                              ...current,
+                          setForm({
+                            ...form,
 
-                              status:
-                                event
-                                  .target
-                                  .value as PurchaseStatus,
-                            }),
-                          )
+                            status:
+                              event.target
+                                .value as PurchaseStatus,
+                          })
                         }
                         className={
                           inputClass
                         }
                       >
+
                         <option value="Received">
                           Received
                         </option>
@@ -1900,15 +2490,20 @@ export default function PurchasePage() {
                         <option value="Cancelled">
                           Cancelled
                         </option>
+
                       </select>
+
                     </FormField>
+
                   </div>
-                </div>
+
+                </section>
 
                 {/* ITEMS */}
-                <div className="border-t border-slate-200 pt-6">
 
-                  <div className="flex items-center justify-between">
+                <section className="border-t border-slate-200 pt-6">
+
+                  <div className="flex items-center justify-between gap-4">
 
                     <SectionTitle
                       title="Purchase Items"
@@ -1920,11 +2515,13 @@ export default function PurchasePage() {
                       onClick={
                         addItem
                       }
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="h-4 w-4" />
+
                       Add Item
                     </button>
+
                   </div>
 
                   <div className="mt-4 space-y-4">
@@ -1934,6 +2531,7 @@ export default function PurchasePage() {
                         item,
                         index,
                       ) => {
+
                         const medicine =
                           medicineCatalog.find(
                             (
@@ -1943,13 +2541,27 @@ export default function PurchasePage() {
                               item.medicineId,
                           );
 
+                        /*
+                          Box first, Strip second.
+                        */
+
                         const purchasableUnits =
-                          medicine?.units.filter(
-                            (
-                              unit,
-                            ) =>
-                              unit.purchasable,
-                          ) ?? [];
+                          medicine?.units
+                            .filter(
+                              (
+                                unit,
+                              ) =>
+                                unit.purchasable,
+                            )
+                            .sort(
+                              (
+                                a,
+                                b,
+                              ) =>
+                                b.conversionToBase -
+                                a.conversionToBase,
+                            ) ??
+                          [];
 
                         const quantity =
                           Number(
@@ -1967,38 +2579,41 @@ export default function PurchasePage() {
                           ) ||
                             0);
 
+                        const primaryPriceUnit =
+                          getPrimaryPricingUnit(
+                            item.unitPrices,
+                          );
+
                         return (
+
                           <div
                             key={
                               item.id
                             }
-                            className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4"
+                            className="rounded-2xl border border-slate-200 p-4"
                           >
 
-                            <div className="mb-4 flex items-center justify-between">
+                            <div className="flex items-start justify-between">
 
                               <div>
+
                                 <p className="text-[12px] font-semibold text-slate-900">
                                   Item{" "}
                                   {index +
                                     1}
                                 </p>
 
-                                {medicine ? (
-                                  <p className="mt-1 text-[9px] text-slate-400">
-                                    Base
-                                    unit:{" "}
-                                    {
-                                      medicine.baseUnit
-                                    }
-                                  </p>
-                                ) : null}
+                                <p className="mt-1 text-[9px] text-slate-400">
+                                  Base unit:{" "}
+                                  {medicine?.baseUnit ??
+                                    "-"}
+                                </p>
+
                               </div>
 
-                              {form
-                                .items
-                                .length >
+                              {form.items.length >
                               1 ? (
+
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -2010,13 +2625,17 @@ export default function PurchasePage() {
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </button>
+
                               ) : null}
+
                             </div>
 
-                            {/* MEDICINE / PURCHASE */}
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            {/* MAIN INPUTS */}
+
+                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
 
                               <FormField label="Medicine *">
+
                                 <select
                                   value={
                                     item.medicineId
@@ -2026,8 +2645,8 @@ export default function PurchasePage() {
                                   ) =>
                                     updateMedicine(
                                       item.id,
-                                      event
-                                        .target
+
+                                      event.target
                                         .value,
                                     )
                                   }
@@ -2035,6 +2654,7 @@ export default function PurchasePage() {
                                     inputClass
                                   }
                                 >
+
                                   <option value="">
                                     Select medicine
                                   </option>
@@ -2043,6 +2663,7 @@ export default function PurchasePage() {
                                     (
                                       medicine,
                                     ) => (
+
                                       <option
                                         key={
                                           medicine.id
@@ -2055,12 +2676,16 @@ export default function PurchasePage() {
                                           medicine.name
                                         }
                                       </option>
+
                                     ),
                                   )}
+
                                 </select>
+
                               </FormField>
 
                               <FormField label="Purchase Unit *">
+
                                 <select
                                   value={
                                     item.purchaseUnit
@@ -2073,13 +2698,14 @@ export default function PurchasePage() {
                                   ) =>
                                     updatePurchaseUnit(
                                       item.id,
-                                      event
-                                        .target
+
+                                      event.target
                                         .value,
                                     )
                                   }
                                   className={`${inputClass} disabled:bg-slate-100`}
                                 >
+
                                   <option value="">
                                     Select unit
                                   </option>
@@ -2088,6 +2714,7 @@ export default function PurchasePage() {
                                     (
                                       unit,
                                     ) => (
+
                                       <option
                                         key={
                                           unit.unitName
@@ -2108,12 +2735,16 @@ export default function PurchasePage() {
                                         }
                                         )
                                       </option>
+
                                     ),
                                   )}
+
                                 </select>
+
                               </FormField>
 
                               <FormField label="Quantity *">
+
                                 <input
                                   type="number"
                                   min="1"
@@ -2126,9 +2757,10 @@ export default function PurchasePage() {
                                   ) =>
                                     updateItemField(
                                       item.id,
+
                                       "quantity",
-                                      event
-                                        .target
+
+                                      event.target
                                         .value,
                                     )
                                   }
@@ -2137,6 +2769,7 @@ export default function PurchasePage() {
                                     inputClass
                                   }
                                 />
+
                               </FormField>
 
                               <FormField
@@ -2145,6 +2778,7 @@ export default function PurchasePage() {
                                   "Unit"
                                 } *`}
                               >
+
                                 <input
                                   type="number"
                                   min="0"
@@ -2157,9 +2791,10 @@ export default function PurchasePage() {
                                   ) =>
                                     updateItemField(
                                       item.id,
+
                                       "unitCost",
-                                      event
-                                        .target
+
+                                      event.target
                                         .value,
                                     )
                                   }
@@ -2168,13 +2803,17 @@ export default function PurchasePage() {
                                     inputClass
                                   }
                                 />
+
                               </FormField>
+
                             </div>
 
                             {/* BATCH */}
+
                             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
 
                               <FormField label="Batch Number *">
+
                                 <input
                                   type="text"
                                   value={
@@ -2185,9 +2824,10 @@ export default function PurchasePage() {
                                   ) =>
                                     updateItemField(
                                       item.id,
+
                                       "batchNo",
-                                      event
-                                        .target
+
+                                      event.target
                                         .value,
                                     )
                                   }
@@ -2196,9 +2836,11 @@ export default function PurchasePage() {
                                     inputClass
                                   }
                                 />
+
                               </FormField>
 
                               <FormField label="Expiry Date *">
+
                                 <input
                                   type="date"
                                   value={
@@ -2209,9 +2851,10 @@ export default function PurchasePage() {
                                   ) =>
                                     updateItemField(
                                       item.id,
+
                                       "expiryDate",
-                                      event
-                                        .target
+
+                                      event.target
                                         .value,
                                     )
                                   }
@@ -2219,15 +2862,20 @@ export default function PurchasePage() {
                                     inputClass
                                   }
                                 />
+
                               </FormField>
+
                             </div>
 
-                            {/* CONVERSION PREVIEW */}
+                            {/* QUANTITY PREVIEW */}
+
                             {medicine &&
                             item.purchaseUnit ? (
+
                               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
 
                                 <div className="rounded-xl border border-sky-100 bg-sky-50 p-3">
+
                                   <p className="text-[9px] text-sky-600">
                                     Inventory Quantity
                                   </p>
@@ -2253,46 +2901,48 @@ export default function PurchasePage() {
                                       item.conversionToBase
                                     }
                                   </p>
+
                                 </div>
 
                                 <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+
                                   <p className="text-[9px] text-emerald-600">
                                     Item Purchase Total
                                   </p>
 
                                   <p className="mt-1 text-[13px] font-semibold text-emerald-900">
                                     ৳
-                                    {lineTotal.toLocaleString(
-                                      "en-US",
+                                    {formatMoney(
+                                      lineTotal,
                                     )}
                                   </p>
+
                                 </div>
+
                               </div>
+
                             ) : null}
 
-                            {/* BATCH PRICING */}
-                            {item
-                              .unitPrices
-                              .length >
+                            {/* PRICE SECTION */}
+
+                            {item.unitPrices.length >
                             0 ? (
+
                               <div className="mt-5 border-t border-slate-200 pt-5">
 
                                 <div>
+
                                   <h4 className="text-[11px] font-semibold text-slate-900">
                                     Batch Selling Prices
                                   </h4>
 
                                   <p className="mt-1 text-[9px] text-slate-500">
-                                    Prices
-                                    can
-                                    differ
-                                    between
-                                    batches.
-                                    Configure
-                                    each
-                                    sellable
-                                    unit.
+                                    Enter only{" "}
+                                    {primaryPriceUnit?.unitName ??
+                                      "largest package"}{" "}
+                                    MRP. Smaller-unit prices are calculated automatically from unit conversion.
                                   </p>
+
                                 </div>
 
                                 <div className="mt-3 space-y-2">
@@ -2300,120 +2950,166 @@ export default function PurchasePage() {
                                   {item.unitPrices.map(
                                     (
                                       price,
-                                    ) => (
-                                      <div
-                                        key={
-                                          price.unitName
-                                        }
-                                        className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1fr_160px_160px]"
-                                      >
+                                    ) => {
 
-                                        <div className="flex items-center">
-                                          <div>
-                                            <p className="text-[11px] font-semibold text-slate-800">
-                                              {
-                                                price.unitName
-                                              }
-                                            </p>
+                                      const isPrimary =
+                                        price.unitName ===
+                                        primaryPriceUnit
+                                          ?.unitName;
 
-                                            <p className="mt-1 text-[9px] text-slate-400">
-                                              1{" "}
-                                              {
-                                                price.unitName
-                                              }{" "}
-                                              ={" "}
-                                              {
-                                                price.conversionToBase
-                                              }{" "}
-                                              {
-                                                medicine?.baseUnit
-                                              }
-                                            </p>
+                                      return (
+
+                                        <div
+                                          key={
+                                            price.unitName
+                                          }
+                                          className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1fr_160px_160px]"
+                                        >
+
+                                          {/* UNIT */}
+
+                                          <div className="flex items-center">
+
+                                            <div>
+
+                                              <p className="text-[11px] font-semibold text-slate-800">
+                                                {
+                                                  price.unitName
+                                                }
+                                              </p>
+
+                                              <p className="mt-1 text-[9px] text-slate-400">
+                                                1{" "}
+                                                {
+                                                  price.unitName
+                                                }{" "}
+                                                ={" "}
+                                                {
+                                                  price.conversionToBase
+                                                }{" "}
+                                                {
+                                                  medicine?.baseUnit
+                                                }
+                                              </p>
+
+                                            </div>
+
                                           </div>
+
+                                          {/* SELLING PRICE */}
+
+                                          <FormField label="Selling Price (Auto)">
+
+                                            <input
+                                              type="text"
+                                              value={
+                                                price.sellingPrice
+                                              }
+                                              readOnly
+                                              placeholder="Auto"
+                                              className={`${inputClass} bg-slate-50 text-slate-500`}
+                                            />
+
+                                          </FormField>
+
+                                          {/* MRP */}
+
+                                          <FormField
+                                            label={
+                                              isPrimary
+                                                ? `${price.unitName} MRP *`
+                                                : "MRP (Auto)"
+                                            }
+                                          >
+
+                                            <input
+                                              /*
+                                                Text + decimal inputMode is intentional.
+
+                                                This removes browser number spinner
+                                                and fixes typing/backspace behaviour.
+                                              */
+                                              type="text"
+                                              inputMode={
+                                                isPrimary
+                                                  ? "decimal"
+                                                  : undefined
+                                              }
+                                              value={
+                                                price.mrp
+                                              }
+                                              readOnly={
+                                                !isPrimary
+                                              }
+                                              onChange={(
+                                                event,
+                                              ) => {
+                                                if (
+                                                  isPrimary
+                                                ) {
+                                                  updatePrimaryMrp(
+                                                    item.id,
+
+                                                    event.target
+                                                      .value,
+                                                  );
+                                                }
+                                              }}
+                                              placeholder={
+                                                isPrimary
+                                                  ? "Enter MRP"
+                                                  : "Auto"
+                                              }
+                                              className={`${inputClass} ${
+                                                !isPrimary
+                                                  ? "bg-slate-50 text-slate-500"
+                                                  : ""
+                                              }`}
+                                            />
+
+                                          </FormField>
+
                                         </div>
 
-                                        <FormField label="Selling Price *">
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={
-                                              price.sellingPrice
-                                            }
-                                            onChange={(
-                                              event,
-                                            ) =>
-                                              updatePrice(
-                                                item.id,
-                                                price.unitName,
-                                                "sellingPrice",
-                                                event
-                                                  .target
-                                                  .value,
-                                              )
-                                            }
-                                            placeholder="৳0.00"
-                                            className={
-                                              inputClass
-                                            }
-                                          />
-                                        </FormField>
-
-                                        <FormField label="MRP">
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={
-                                              price.mrp
-                                            }
-                                            onChange={(
-                                              event,
-                                            ) =>
-                                              updatePrice(
-                                                item.id,
-                                                price.unitName,
-                                                "mrp",
-                                                event
-                                                  .target
-                                                  .value,
-                                              )
-                                            }
-                                            placeholder="Optional"
-                                            className={
-                                              inputClass
-                                            }
-                                          />
-                                        </FormField>
-                                      </div>
-                                    ),
+                                      );
+                                    },
                                   )}
+
                                 </div>
+
                               </div>
+
                             ) : null}
+
                           </div>
+
                         );
                       },
                     )}
-                  </div>
-                </div>
 
-                {/* TOTAL */}
+                  </div>
+
+                </section>
+
+                {/* GRAND TOTAL */}
+
                 <div className="flex justify-end border-t border-slate-200 pt-5">
 
                   <div className="w-full max-w-[340px] rounded-xl bg-slate-50 p-4">
 
                     <div className="flex items-center justify-between text-[11px] text-slate-500">
+
                       <span>
                         Purchase Total
                       </span>
 
                       <span>
                         ৳
-                        {formTotal.toLocaleString(
-                          "en-US",
+                        {formatMoney(
+                          formTotal,
                         )}
                       </span>
+
                     </div>
 
                     <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3">
@@ -2424,16 +3120,21 @@ export default function PurchasePage() {
 
                       <span className="text-[18px] font-bold text-sky-700">
                         ৳
-                        {formTotal.toLocaleString(
-                          "en-US",
+                        {formatMoney(
+                          formTotal,
                         )}
                       </span>
+
                     </div>
+
                   </div>
+
                 </div>
+
               </div>
 
-              {/* FOOTER */}
+              {/* MODAL FOOTER */}
+
               <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
 
                 <button
@@ -2452,21 +3153,33 @@ export default function PurchasePage() {
                 >
                   Save Purchase
                 </button>
+
               </div>
+
             </form>
+
           </div>
+
         </div>
+
       ) : null}
 
-      {/* DETAILS MODAL */}
+      {/* ===================================================
+          PURCHASE DETAILS MODAL
+      =================================================== */}
+
       {selectedPurchase ? (
+
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
 
           <div className="max-h-[94vh] w-full max-w-[900px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
 
+            {/* DETAILS HEADER */}
+
             <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
 
               <div>
+
                 <h2 className="text-base font-semibold text-slate-950">
                   Purchase Details
                 </h2>
@@ -2476,6 +3189,7 @@ export default function PurchasePage() {
                     selectedPurchase.id
                   }
                 </p>
+
               </div>
 
               <button
@@ -2489,7 +3203,10 @@ export default function PurchasePage() {
               >
                 <X className="h-5 w-5" />
               </button>
+
             </div>
+
+            {/* DETAILS BODY */}
 
             <div className="space-y-5 p-5">
 
@@ -2523,7 +3240,10 @@ export default function PurchasePage() {
                     selectedPurchase.status
                   }
                 />
+
               </div>
+
+              {/* ITEMS */}
 
               <div className="space-y-3">
 
@@ -2532,6 +3252,7 @@ export default function PurchasePage() {
                     item,
                     index,
                   ) => (
+
                     <div
                       key={
                         item.id
@@ -2542,6 +3263,7 @@ export default function PurchasePage() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
 
                         <div>
+
                           <p className="text-[12px] font-semibold text-slate-900">
                             {index +
                               1}
@@ -2556,6 +3278,7 @@ export default function PurchasePage() {
                               item.genericName
                             }
                           </p>
+
                         </div>
 
                         <div className="text-left sm:text-right">
@@ -2569,8 +3292,12 @@ export default function PurchasePage() {
                               item.batchNo
                             }
                           </p>
+
                         </div>
+
                       </div>
+
+                      {/* ITEM DETAILS */}
 
                       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
 
@@ -2588,8 +3315,8 @@ export default function PurchasePage() {
 
                         <DetailBox
                           label="Purchase Cost"
-                          value={`৳${item.unitCost.toLocaleString(
-                            "en-US",
+                          value={`৳${formatMoney(
+                            item.unitCost,
                           )} / ${item.purchaseUnit}`}
                         />
 
@@ -2599,7 +3326,10 @@ export default function PurchasePage() {
                             item.expiryDate,
                           )}
                         />
+
                       </div>
+
+                      {/* PRICE TABLE */}
 
                       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
 
@@ -2608,11 +3338,13 @@ export default function PurchasePage() {
                           <p className="text-[10px] font-semibold text-slate-700">
                             Batch Selling Prices
                           </p>
+
                         </div>
 
                         <table className="w-full">
 
                           <thead>
+
                             <tr className="border-b border-slate-100">
 
                               <TableHead>
@@ -2630,60 +3362,83 @@ export default function PurchasePage() {
                               <TableHead>
                                 MRP
                               </TableHead>
+
                             </tr>
+
                           </thead>
 
                           <tbody>
-                            {item.unitPrices.map(
-                              (
-                                price,
-                              ) => (
-                                <tr
-                                  key={
-                                    price.unitName
-                                  }
-                                  className="border-b border-slate-100 last:border-b-0"
-                                >
 
-                                  <td className="px-4 py-3 text-[10px] font-medium text-slate-800">
-                                    {
+                            {[...item.unitPrices]
+                              .sort(
+                                (
+                                  a,
+                                  b,
+                                ) =>
+                                  b.conversionToBase -
+                                  a.conversionToBase,
+                              )
+                              .map(
+                                (
+                                  price,
+                                ) => (
+
+                                  <tr
+                                    key={
                                       price.unitName
                                     }
-                                  </td>
+                                    className="border-b border-slate-100 last:border-b-0"
+                                  >
 
-                                  <td className="px-4 py-3 text-[10px] text-slate-500">
-                                    ×
-                                    {
-                                      price.conversionToBase
-                                    }{" "}
-                                    {
-                                      item.baseUnit
-                                    }
-                                  </td>
+                                    <td className="px-4 py-3 text-[10px] font-medium text-slate-800">
+                                      {
+                                        price.unitName
+                                      }
+                                    </td>
 
-                                  <td className="px-4 py-3 text-[10px] font-semibold text-emerald-700">
-                                    ৳
-                                    {
-                                      price.sellingPrice
-                                    }
-                                  </td>
+                                    <td className="px-4 py-3 text-[10px] text-slate-500">
+                                      ×
+                                      {
+                                        price.conversionToBase
+                                      }{" "}
+                                      {
+                                        item.baseUnit
+                                      }
+                                    </td>
 
-                                  <td className="px-4 py-3 text-[10px] text-slate-600">
-                                    {price.mrp !==
-                                    null
-                                      ? `৳${price.mrp}`
-                                      : "-"}
-                                  </td>
-                                </tr>
-                              ),
-                            )}
+                                    <td className="px-4 py-3 text-[10px] font-semibold text-emerald-700">
+                                      ৳
+                                      {formatMoney(
+                                        price.sellingPrice,
+                                      )}
+                                    </td>
+
+                                    <td className="px-4 py-3 text-[10px] text-slate-600">
+                                      ৳
+                                      {formatMoney(
+                                        price.mrp,
+                                      )}
+                                    </td>
+
+                                  </tr>
+
+                                ),
+                              )}
+
                           </tbody>
+
                         </table>
+
                       </div>
+
                     </div>
+
                   ),
                 )}
+
               </div>
+
+              {/* TOTAL */}
 
               <div className="flex justify-end">
 
@@ -2697,20 +3452,70 @@ export default function PurchasePage() {
 
                     <span className="text-[16px] font-bold text-sky-700">
                       ৳
-                      {selectedPurchase.totalAmount.toLocaleString(
-                        "en-US",
+                      {formatMoney(
+                        selectedPurchase.totalAmount,
                       )}
                     </span>
+
                   </div>
+
                 </div>
+
               </div>
+
             </div>
+
+            {/* DETAILS FOOTER */}
+
+            <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedPurchase(
+                    null,
+                  )
+                }
+                className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+
+              {/* ONLY PENDING PURCHASE CAN BE RECEIVED */}
+
+              {selectedPurchase.status ===
+              "Pending" ? (
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    receivePurchase(
+                      selectedPurchase.id,
+                    )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+
+                  Receive Purchase
+                </button>
+
+              ) : null}
+
+            </div>
+
           </div>
+
         </div>
+
       ) : null}
     </>
   );
 }
+
+/* =========================================================
+   SHARED UI
+========================================================= */
 
 const inputClass =
   "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[11px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100";
@@ -2736,11 +3541,13 @@ function FormField({
 }) {
   return (
     <div>
+
       <label className="mb-2 block text-[10px] font-medium text-slate-700">
         {label}
       </label>
 
       {children}
+
     </div>
   );
 }
@@ -2754,6 +3561,7 @@ function SectionTitle({
 }) {
   return (
     <div>
+
       <h3 className="text-[13px] font-semibold text-slate-900">
         {title}
       </h3>
@@ -2761,6 +3569,7 @@ function SectionTitle({
       <p className="mt-1 text-[10px] text-slate-500">
         {description}
       </p>
+
     </div>
   );
 }
@@ -2774,6 +3583,7 @@ function DetailBox({
 }) {
   return (
     <div className="rounded-xl bg-slate-50 p-3">
+
       <p className="text-[9px] text-slate-400">
         {label}
       </p>
@@ -2781,6 +3591,7 @@ function DetailBox({
       <p className="mt-1 text-[10px] font-semibold text-slate-800">
         {value}
       </p>
+
     </div>
   );
 }
@@ -2792,22 +3603,27 @@ function StatCard({
 }: {
   icon: ReactNode;
   label: string;
-  value: string | number;
+  value:
+    | string
+    | number;
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
 
       <div className="flex items-center gap-2 text-sky-600">
+
         {icon}
 
         <p className="text-[10px] font-medium text-slate-500">
           {label}
         </p>
+
       </div>
 
       <p className="mt-3 text-2xl font-semibold text-slate-900">
         {value}
       </p>
+
     </div>
   );
 }
