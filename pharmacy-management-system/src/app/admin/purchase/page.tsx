@@ -1,11 +1,22 @@
 "use client";
 
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import type {
+  FormEvent,
+  ReactNode,
+} from "react";
+
 import {
   Boxes,
   CheckCircle2,
   Clock3,
   Eye,
+  Loader2,
   PackagePlus,
   Plus,
   Search,
@@ -14,46 +25,84 @@ import {
   X,
 } from "lucide-react";
 
-type PurchaseStatus = "Received" | "Pending" | "Cancelled";
+/* =========================================================
+   TYPES
+========================================================= */
+
+type PurchaseStatus =
+  | "Received"
+  | "Pending"
+  | "Cancelled";
 
 type MedicineUnitConfig = {
+  id?: string;
+
   unitName: string;
+
   conversionToBase: number;
+
   sellable: boolean;
+
   purchasable: boolean;
+
+  isBaseUnit?: boolean;
 };
 
 type MedicineConfig = {
   id: string;
+
   name: string;
+
   genericName: string;
+
   baseUnit: string;
+
+  status?: "active" | "inactive";
+
   units: MedicineUnitConfig[];
+};
+
+type SupplierOption = {
+  id: string;
+
+  name: string;
+
+  status: "active" | "inactive";
 };
 
 type UnitPrice = {
   unitName: string;
+
   conversionToBase: number;
+
   sellingPrice: number;
+
   mrp: number;
 };
 
 type PurchaseItem = {
   id: string;
+
   medicineId: string;
+
   medicine: string;
+
   genericName: string;
+
   baseUnit: string;
 
   purchaseUnit: string;
+
   conversionToBase: number;
 
   quantity: number;
+
   baseQuantity: number;
 
   unitCost: number;
 
   batchNo: string;
+
   expiryDate: string;
 
   unitPrices: UnitPrice[];
@@ -61,9 +110,17 @@ type PurchaseItem = {
 
 type Purchase = {
   id: string;
+
+  databaseId?: number;
+
+  supplierId?: string;
+
   supplier: string;
+
   supplierInvoiceNo: string;
+
   purchaseDate: string;
+
   status: PurchaseStatus;
 
   items: PurchaseItem[];
@@ -73,14 +130,17 @@ type Purchase = {
   processedBy: string;
 
   receivedAt?: string;
+
   receivedBy?: string;
 };
 
 type UnitPriceForm = {
   unitName: string;
+
   conversionToBase: number;
 
   sellingPrice: string;
+
   mrp: string;
 };
 
@@ -90,552 +150,92 @@ type PurchaseItemForm = {
   medicineId: string;
 
   purchaseUnit: string;
+
   conversionToBase: number;
 
   quantity: string;
+
   unitCost: string;
 
   batchNo: string;
+
   expiryDate: string;
 
   unitPrices: UnitPriceForm[];
 };
 
 type PurchaseForm = {
-  supplier: string;
+  supplierId: string;
+
   supplierInvoiceNo: string;
 
   purchaseDate: string;
 
-  status: PurchaseStatus;
+  status: "Received" | "Pending";
 
   items: PurchaseItemForm[];
 };
 
-/* =========================================================
-   SUPPLIERS
-========================================================= */
+type PurchasesApiResponse = {
+  success: boolean;
 
-const suppliers = [
-  "Square Pharmaceuticals Ltd.",
-  "Beximco Pharmaceuticals Ltd.",
-  "Renata Limited",
-  "Healthcare Pharmaceuticals Ltd.",
-  "ACME Laboratories Ltd.",
-  "Eskayef Pharmaceuticals Ltd.",
-];
+  message?: string;
 
-/* =========================================================
-   MEDICINE CATALOG
-========================================================= */
+  data?: Purchase[];
+};
 
-const medicineCatalog: MedicineConfig[] = [
-  {
-    id: "MED-001",
-    name: "Napa 500mg",
-    genericName: "Paracetamol",
-    baseUnit: "Tablet",
+type SuppliersApiResponse = {
+  success: boolean;
 
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 200,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
+  message?: string;
 
-  {
-    id: "MED-002",
-    name: "Ace Plus",
-    genericName: "Paracetamol + Caffeine",
-    baseUnit: "Tablet",
+  data?: SupplierOption[];
+};
 
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 200,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
+type MedicinesApiResponse = {
+  success: boolean;
 
-  {
-    id: "MED-003",
-    name: "Napa Extend",
-    genericName: "Paracetamol",
-    baseUnit: "Tablet",
+  message?: string;
 
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
+  data?: MedicineConfig[];
+};
 
-  {
-    id: "MED-004",
-    name: "Seclo 20mg",
-    genericName: "Omeprazole",
-    baseUnit: "Capsule",
+type MutationApiResponse = {
+  success: boolean;
 
-    units: [
-      {
-        unitName: "Capsule",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
+  message?: string;
 
-  {
-    id: "MED-005",
-    name: "Maxpro 20mg",
-    genericName: "Esomeprazole",
-    baseUnit: "Capsule",
-
-    units: [
-      {
-        unitName: "Capsule",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
-
-  {
-    id: "MED-006",
-    name: "Sergel 20mg",
-    genericName: "Esomeprazole",
-    baseUnit: "Capsule",
-
-    units: [
-      {
-        unitName: "Capsule",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
-
-  {
-    id: "MED-007",
-    name: "Monas 10mg",
-    genericName: "Montelukast",
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
-
-  {
-    id: "MED-008",
-    name: "Fexo 120mg",
-    genericName: "Fexofenadine",
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
-
-  {
-    id: "MED-009",
-    name: "Amdocal 5mg",
-    genericName: "Amlodipine",
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
-
-  {
-    id: "MED-010",
-    name: "Ceevit 250mg",
-    genericName: "Vitamin C",
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        sellable: true,
-        purchasable: false,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        sellable: true,
-        purchasable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        sellable: true,
-        purchasable: true,
-      },
-    ],
-  },
-];
-
-/* =========================================================
-   INITIAL PURCHASE DATA
-========================================================= */
-
-const initialPurchases: Purchase[] = [
-  {
-    id: "PUR-2026-001",
-
-    supplier: "Beximco Pharmaceuticals Ltd.",
-
-    supplierInvoiceNo: "BEX-88201",
-
-    purchaseDate: "2026-08-01",
-
-    status: "Received",
-
-    processedBy: "Admin User",
-
-    receivedBy: "Admin User",
-
-    receivedAt: "2026-08-01T10:00:00.000Z",
-
-    totalAmount: 9000,
-
-    items: [
-      {
-        id: "PITEM-001",
-
-        medicineId: "MED-001",
-
-        medicine: "Napa 500mg",
-
-        genericName: "Paracetamol",
-
-        baseUnit: "Tablet",
-
-        purchaseUnit: "Box",
-
-        conversionToBase: 200,
-
-        quantity: 50,
-
-        baseQuantity: 10000,
-
-        unitCost: 180,
-
-        batchNo: "NPA-2608-A",
-
-        expiryDate: "2027-12-31",
-
-        unitPrices: [
-          {
-            unitName: "Box",
-            conversionToBase: 200,
-            sellingPrice: 240,
-            mrp: 240,
-          },
-          {
-            unitName: "Strip",
-            conversionToBase: 10,
-            sellingPrice: 12,
-            mrp: 12,
-          },
-          {
-            unitName: "Tablet",
-            conversionToBase: 1,
-            sellingPrice: 1.2,
-            mrp: 1.2,
-          },
-        ],
-      },
-    ],
-  },
-
-  {
-    id: "PUR-2026-002",
-
-    supplier: "Square Pharmaceuticals Ltd.",
-
-    supplierInvoiceNo: "SQR-55120",
-
-    purchaseDate: "2026-08-04",
-
-    status: "Received",
-
-    processedBy: "Admin User",
-
-    receivedBy: "Admin User",
-
-    receivedAt: "2026-08-04T10:00:00.000Z",
-
-    totalAmount: 7800,
-
-    items: [
-      {
-        id: "PITEM-002",
-
-        medicineId: "MED-004",
-
-        medicine: "Seclo 20mg",
-
-        genericName: "Omeprazole",
-
-        baseUnit: "Capsule",
-
-        purchaseUnit: "Box",
-
-        conversionToBase: 100,
-
-        quantity: 60,
-
-        baseQuantity: 6000,
-
-        unitCost: 130,
-
-        batchNo: "SCL-2608-B",
-
-        expiryDate: "2027-04-30",
-
-        unitPrices: [
-          {
-            unitName: "Box",
-            conversionToBase: 100,
-            sellingPrice: 200,
-            mrp: 200,
-          },
-          {
-            unitName: "Strip",
-            conversionToBase: 10,
-            sellingPrice: 20,
-            mrp: 20,
-          },
-          {
-            unitName: "Capsule",
-            conversionToBase: 1,
-            sellingPrice: 2,
-            mrp: 2,
-          },
-        ],
-      },
-    ],
-  },
-
-  {
-    id: "PUR-2026-003",
-
-    supplier: "Renata Limited",
-
-    supplierInvoiceNo: "REN-77342",
-
-    purchaseDate: "2026-08-08",
-
-    status: "Pending",
-
-    processedBy: "Admin User",
-
-    totalAmount: 5500,
-
-    items: [
-      {
-        id: "PITEM-003",
-
-        medicineId: "MED-005",
-
-        medicine: "Maxpro 20mg",
-
-        genericName: "Esomeprazole",
-
-        baseUnit: "Capsule",
-
-        purchaseUnit: "Box",
-
-        conversionToBase: 100,
-
-        quantity: 50,
-
-        baseQuantity: 5000,
-
-        unitCost: 110,
-
-        batchNo: "MXP-2608-C",
-
-        expiryDate: "2028-01-31",
-
-        unitPrices: [
-          {
-            unitName: "Box",
-            conversionToBase: 100,
-            sellingPrice: 180,
-            mrp: 180,
-          },
-          {
-            unitName: "Strip",
-            conversionToBase: 10,
-            sellingPrice: 18,
-            mrp: 18,
-          },
-          {
-            unitName: "Capsule",
-            conversionToBase: 1,
-            sellingPrice: 1.8,
-            mrp: 1.8,
-          },
-        ],
-      },
-    ],
-  },
-];
+  data?: {
+    purchaseNo?: string;
+  };
+};
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
 function getTodayLocalDate() {
-  const today = new Date();
+  const today =
+    new Date();
 
-  const year = today.getFullYear();
+  const year =
+    today.getFullYear();
 
-  const month = String(
-    today.getMonth() + 1,
-  ).padStart(2, "0");
+  const month =
+    String(
+      today.getMonth() + 1,
+    ).padStart(
+      2,
+      "0",
+    );
 
-  const day = String(
-    today.getDate(),
-  ).padStart(2, "0");
+  const day =
+    String(
+      today.getDate(),
+    ).padStart(
+      2,
+      "0",
+    );
 
   return `${year}-${month}-${day}`;
 }
@@ -644,7 +244,9 @@ function createEmptyItem(
   index = 1,
 ): PurchaseItemForm {
   return {
-    id: `FORM-${Date.now()}-${index}`,
+    id: `FORM-${Date.now()}-${index}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`,
 
     medicineId: "",
 
@@ -666,7 +268,7 @@ function createEmptyItem(
 
 function createEmptyForm(): PurchaseForm {
   return {
-    supplier: "",
+    supplierId: "",
 
     supplierInvoiceNo: "",
 
@@ -692,7 +294,16 @@ function formatDate(
     year,
     month,
     day,
-  ] = date.split("-");
+  ] =
+    date.split("-");
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return date;
+  }
 
   return `${day}-${month}-${year}`;
 }
@@ -703,8 +314,11 @@ function formatMoney(
   return value.toLocaleString(
     "en-US",
     {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
+      minimumFractionDigits:
+        0,
+
+      maximumFractionDigits:
+        2,
     },
   );
 }
@@ -727,8 +341,8 @@ function roundMoney(
   Example:
 
   Tablet = 1
-  Strip = 10
-  Box = 200
+  Strip  = 10
+  Box    = 200
 
   Primary pricing unit = Box
 */
@@ -737,7 +351,8 @@ function getPrimaryPricingUnit(
   unitPrices: UnitPriceForm[],
 ) {
   if (
-    unitPrices.length === 0
+    unitPrices.length ===
+    0
   ) {
     return null;
   }
@@ -759,13 +374,35 @@ function getPrimaryPricingUnit(
 ========================================================= */
 
 export default function PurchasePage() {
+  /* =======================================================
+     DATABASE DATA
+  ======================================================= */
+
   const [
     purchases,
     setPurchases,
   ] =
-    useState<Purchase[]>(
-      initialPurchases,
+    useState<Purchase[]>([]);
+
+  const [
+    supplierOptions,
+    setSupplierOptions,
+  ] =
+    useState<SupplierOption[]>(
+      [],
     );
+
+  const [
+    medicineCatalog,
+    setMedicineCatalog,
+  ] =
+    useState<MedicineConfig[]>(
+      [],
+    );
+
+  /* =======================================================
+     PAGE STATE
+  ======================================================= */
 
   const [
     searchTerm,
@@ -800,6 +437,275 @@ export default function PurchasePage() {
     useState<PurchaseForm>(
       createEmptyForm(),
     );
+
+  /* =======================================================
+     ASYNC STATE
+  ======================================================= */
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
+    useState(true);
+
+  const [
+    isSaving,
+    setIsSaving,
+  ] =
+    useState(false);
+
+  const [
+    receivingPurchaseId,
+    setReceivingPurchaseId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] =
+    useState("");
+
+  /* =======================================================
+     INITIAL LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    async function loadInitialData() {
+      try {
+        const [
+          purchaseResponse,
+          supplierResponse,
+          medicineResponse,
+        ] =
+          await Promise.all([
+            fetch(
+              "/api/purchases",
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              },
+            ),
+
+            fetch(
+              "/api/suppliers",
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              },
+            ),
+
+            fetch(
+              "/api/medicines",
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              },
+            ),
+          ]);
+
+        const purchaseResult:
+          PurchasesApiResponse =
+          await purchaseResponse.json();
+
+        const supplierResult:
+          SuppliersApiResponse =
+          await supplierResponse.json();
+
+        const medicineResult:
+          MedicinesApiResponse =
+          await medicineResponse.json();
+
+        if (
+          !purchaseResponse.ok ||
+          !purchaseResult.success
+        ) {
+          throw new Error(
+            purchaseResult.message ||
+              "Failed to load purchases.",
+          );
+        }
+
+        if (
+          !supplierResponse.ok ||
+          !supplierResult.success
+        ) {
+          throw new Error(
+            supplierResult.message ||
+              "Failed to load suppliers.",
+          );
+        }
+
+        if (
+          !medicineResponse.ok ||
+          !medicineResult.success
+        ) {
+          throw new Error(
+            medicineResult.message ||
+              "Failed to load medicines.",
+          );
+        }
+
+        if (
+          controller.signal
+            .aborted
+        ) {
+          return;
+        }
+
+        setPurchases(
+          purchaseResult.data ??
+            [],
+        );
+
+        setSupplierOptions(
+          (
+            supplierResult.data ??
+            []
+          ).filter(
+            (supplier) =>
+              supplier.status ===
+              "active",
+          ),
+        );
+
+        setMedicineCatalog(
+          (
+            medicineResult.data ??
+            []
+          ).filter(
+            (medicine) =>
+              medicine.status !==
+              "inactive",
+          ),
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name ===
+            "AbortError"
+        ) {
+          return;
+        }
+
+        console.error(
+          "Initial purchase load error:",
+          error,
+        );
+
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Failed to load purchase data.",
+          );
+        }
+      } finally {
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setIsLoading(
+            false,
+          );
+        }
+      }
+    }
+
+    void loadInitialData();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  /* =======================================================
+     RELOAD PURCHASES
+  ======================================================= */
+
+  async function loadPurchases() {
+    try {
+      setErrorMessage(
+        "",
+      );
+
+      const response =
+        await fetch(
+          "/api/purchases",
+          {
+            method: "GET",
+
+            cache:
+              "no-store",
+          },
+        );
+
+      const result:
+        PurchasesApiResponse =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Failed to load purchases.",
+        );
+      }
+
+      const freshPurchases =
+        result.data ?? [];
+
+      setPurchases(
+        freshPurchases,
+      );
+
+      return freshPurchases;
+    } catch (error) {
+      console.error(
+        "Reload purchases error:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to load purchases.";
+
+      setErrorMessage(
+        message,
+      );
+
+      throw error;
+    }
+  }
 
   /* =======================================================
      TOTAL
@@ -881,9 +787,7 @@ export default function PurchasePage() {
 
         totalValue,
       };
-    }, [
-      purchases,
-    ]);
+    }, [purchases]);
 
   /* =======================================================
      FILTER
@@ -952,53 +856,14 @@ export default function PurchasePage() {
     ]);
 
   /* =======================================================
-     PURCHASE ID
-  ======================================================= */
-
-  function generatePurchaseId() {
-    const year =
-      new Date().getFullYear();
-
-    const highestNumber =
-      purchases.reduce(
-        (
-          highest,
-          purchase,
-        ) => {
-          const parts =
-            purchase.id.split(
-              "-",
-            );
-
-          const number =
-            Number(
-              parts[
-                parts.length -
-                  1
-              ],
-            ) || 0;
-
-          return Math.max(
-            highest,
-            number,
-          );
-        },
-        0,
-      );
-
-    return `PUR-${year}-${String(
-      highestNumber + 1,
-    ).padStart(
-      3,
-      "0",
-    )}`;
-  }
-
-  /* =======================================================
      MODAL
   ======================================================= */
 
   function openPurchaseModal() {
+    setErrorMessage(
+      "",
+    );
+
     setForm(
       createEmptyForm(),
     );
@@ -1009,6 +874,10 @@ export default function PurchasePage() {
   }
 
   function closePurchaseModal() {
+    if (isSaving) {
+      return;
+    }
+
     setIsPurchaseModalOpen(
       false,
     );
@@ -1075,12 +944,13 @@ export default function PurchasePage() {
 
   function updateMedicine(
     itemId: string,
+
     medicineId: string,
   ) {
     const medicine =
       medicineCatalog.find(
-        (medicine) =>
-          medicine.id ===
+        (currentMedicine) =>
+          currentMedicine.id ===
           medicineId,
       );
 
@@ -1119,49 +989,46 @@ export default function PurchasePage() {
 
                   batchNo: "",
 
-                  expiryDate: "",
+                  expiryDate:
+                    "",
 
-                  unitPrices: [],
+                  unitPrices:
+                    [],
                 };
               }
 
               /*
-                Purchasable:
+                Purchase unit:
+                only units marked as purchasable.
 
-                Strip
-                Box
+                Largest available purchase unit becomes
+                the default.
 
-                Largest unit becomes default.
-
-                So Box comes first.
+                Example:
+                Box > Strip > Tablet
               */
 
               const purchasableUnits =
-                medicine.units.filter(
-                  (unit) =>
-                    unit.purchasable,
-                );
+                medicine.units
+                  .filter(
+                    (unit) =>
+                      unit.purchasable,
+                  )
+                  .sort(
+                    (
+                      first,
+                      second,
+                    ) =>
+                      second.conversionToBase -
+                      first.conversionToBase,
+                  );
 
               const defaultPurchaseUnit =
-                purchasableUnits.reduce(
-                  (
-                    largest,
-                    current,
-                  ) =>
-                    current
-                      .conversionToBase >
-                    largest
-                      .conversionToBase
-                      ? current
-                      : largest,
-                );
+                purchasableUnits[0];
 
               /*
-                Selling price display order:
-
-                Box
-                Strip
-                Tablet
+                Selling price display:
+                largest → smallest.
               */
 
               const sellingUnits =
@@ -1172,11 +1039,11 @@ export default function PurchasePage() {
                   )
                   .sort(
                     (
-                      a,
-                      b,
+                      first,
+                      second,
                     ) =>
-                      b.conversionToBase -
-                      a.conversionToBase,
+                      second.conversionToBase -
+                      first.conversionToBase,
                   );
 
               return {
@@ -1231,6 +1098,7 @@ export default function PurchasePage() {
 
   function updatePurchaseUnit(
     itemId: string,
+
     purchaseUnit: string,
   ) {
     setForm(
@@ -1251,16 +1119,21 @@ export default function PurchasePage() {
 
               const medicine =
                 medicineCatalog.find(
-                  (medicine) =>
-                    medicine.id ===
+                  (
+                    currentMedicine,
+                  ) =>
+                    currentMedicine.id ===
                     item.medicineId,
                 );
 
               const unit =
                 medicine?.units.find(
-                  (unit) =>
-                    unit.unitName ===
-                    purchaseUnit,
+                  (
+                    currentUnit,
+                  ) =>
+                    currentUnit.unitName ===
+                    purchaseUnit &&
+                    currentUnit.purchasable,
                 );
 
               return {
@@ -1318,18 +1191,18 @@ export default function PurchasePage() {
   }
 
   /* =======================================================
-     BOX MRP → AUTO UNIT PRICES
+     PRIMARY MRP → AUTO UNIT PRICES
   ======================================================= */
 
   function updatePrimaryMrp(
     itemId: string,
+
     value: string,
   ) {
     /*
-      Important:
+      Text input is intentional.
 
       Allows:
-
       ""
       "2"
       "24"
@@ -1338,7 +1211,7 @@ export default function PurchasePage() {
       "240.5"
       "240.50"
 
-      This fixes the old 2 → 2.00 typing problem.
+      So Backspace works normally.
     */
 
     const validInput =
@@ -1371,13 +1244,11 @@ export default function PurchasePage() {
                   item.unitPrices,
                 );
 
-              if (!primaryUnit) {
+              if (
+                !primaryUnit
+              ) {
                 return item;
               }
-
-              /*
-                User used Backspace and removed everything
-              */
 
               if (
                 value === ""
@@ -1413,14 +1284,6 @@ export default function PurchasePage() {
               const updatedPrices =
                 item.unitPrices.map(
                   (price) => {
-                    /*
-                      Largest unit:
-
-                      Box
-
-                      Keep raw typed value.
-                    */
-
                     if (
                       price.unitName ===
                       primaryUnit.unitName
@@ -1428,7 +1291,8 @@ export default function PurchasePage() {
                       return {
                         ...price,
 
-                        mrp: value,
+                        mrp:
+                          value,
 
                         sellingPrice:
                           numericValue >
@@ -1442,19 +1306,12 @@ export default function PurchasePage() {
                       };
                     }
 
-                    /*
-                      Auto calculation:
-
-                      Unit Price
-                      =
-                      Box MRP × Unit Conversion
-                      ÷ Box Conversion
-                    */
-
                     const calculatedPrice =
                       roundMoney(
-                        (numericValue *
-                          price.conversionToBase) /
+                        (
+                          numericValue *
+                          price.conversionToBase
+                        ) /
                           primaryUnit.conversionToBase,
                       );
 
@@ -1497,7 +1354,9 @@ export default function PurchasePage() {
   ======================================================= */
 
   function validateForm() {
-    if (!form.supplier) {
+    if (
+      !form.supplierId
+    ) {
       window.alert(
         "Please select a supplier.",
       );
@@ -1533,12 +1392,10 @@ export default function PurchasePage() {
       let index = 0;
       index <
       form.items.length;
-      index++
+      index += 1
     ) {
       const item =
-        form.items[
-          index
-        ];
+        form.items[index];
 
       const itemNumber =
         index + 1;
@@ -1587,7 +1444,7 @@ export default function PurchasePage() {
         );
 
       if (
-        Number.isNaN(
+        !Number.isFinite(
           unitCost,
         ) ||
         unitCost <= 0
@@ -1651,10 +1508,6 @@ export default function PurchasePage() {
         duplicateKey,
       );
 
-      /*
-        Only primary package MRP is required.
-      */
-
       const primaryUnit =
         getPrimaryPricingUnit(
           item.unitPrices,
@@ -1675,7 +1528,7 @@ export default function PurchasePage() {
 
       if (
         !primaryUnit.mrp.trim() ||
-        Number.isNaN(
+        !Number.isFinite(
           primaryMrp,
         ) ||
         primaryMrp <= 0
@@ -1686,10 +1539,6 @@ export default function PurchasePage() {
 
         return false;
       }
-
-      /*
-        Check calculated prices.
-      */
 
       for (
         const price of
@@ -1706,12 +1555,11 @@ export default function PurchasePage() {
           );
 
         if (
-          Number.isNaN(
+          !Number.isFinite(
             sellingPrice,
           ) ||
-          sellingPrice <=
-            0 ||
-          Number.isNaN(
+          sellingPrice <= 0 ||
+          !Number.isFinite(
             mrp,
           ) ||
           mrp <= 0
@@ -1729,111 +1577,28 @@ export default function PurchasePage() {
   }
 
   /* =======================================================
-     SAVE PURCHASE
+     SAVE PURCHASE → DATABASE
   ======================================================= */
 
-  function handleSubmit(
+  async function handleSubmit(
     event:
       FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
-    if (!validateForm()) {
+    if (isSaving) {
       return;
     }
 
-    const purchaseItems:
-      PurchaseItem[] =
-      form.items.map(
-        (
-          item,
-          index,
-        ) => {
-          const medicine =
-            medicineCatalog.find(
-              (medicine) =>
-                medicine.id ===
-                item.medicineId,
-            )!;
+    if (
+      !validateForm()
+    ) {
+      return;
+    }
 
-          const quantity =
-            Number(
-              item.quantity,
-            );
-
-          return {
-            id: `ITEM-${Date.now()}-${index}`,
-
-            medicineId:
-              medicine.id,
-
-            medicine:
-              medicine.name,
-
-            genericName:
-              medicine.genericName,
-
-            baseUnit:
-              medicine.baseUnit,
-
-            purchaseUnit:
-              item.purchaseUnit,
-
-            conversionToBase:
-              item.conversionToBase,
-
-            quantity,
-
-            baseQuantity:
-              quantity *
-              item.conversionToBase,
-
-            unitCost:
-              Number(
-                item.unitCost,
-              ),
-
-            batchNo:
-              item.batchNo.trim(),
-
-            expiryDate:
-              item.expiryDate,
-
-            unitPrices:
-              item.unitPrices.map(
-                (price) => ({
-                  unitName:
-                    price.unitName,
-
-                  conversionToBase:
-                    price.conversionToBase,
-
-                  sellingPrice:
-                    Number(
-                      price.sellingPrice,
-                    ),
-
-                  mrp:
-                    Number(
-                      price.mrp,
-                    ),
-                }),
-              ),
-          };
-        },
-      );
-
-    const isReceived =
-      form.status ===
-      "Received";
-
-    const newPurchase:
-      Purchase = {
-      id:
-        generatePurchaseId(),
-
-      supplier:
-        form.supplier,
+    const payload = {
+      supplierId:
+        form.supplierId,
 
       supplierInvoiceNo:
         form.supplierInvoiceNo.trim(),
@@ -1845,56 +1610,150 @@ export default function PurchasePage() {
         form.status,
 
       items:
-        purchaseItems,
+        form.items.map(
+          (item) => {
+            const primaryUnit =
+              getPrimaryPricingUnit(
+                item.unitPrices,
+              );
 
-      totalAmount:
-        formTotal,
+            return {
+              medicineId:
+                item.medicineId,
 
-      processedBy:
-        "Admin User",
+              purchaseUnit:
+                item.purchaseUnit,
 
-      receivedAt:
-        isReceived
-          ? new Date().toISOString()
-          : undefined,
+              quantity:
+                Number(
+                  item.quantity,
+                ),
 
-      receivedBy:
-        isReceived
-          ? "Admin User"
-          : undefined,
+              unitCost:
+                Number(
+                  item.unitCost,
+                ),
+
+              batchNo:
+                item.batchNo.trim(),
+
+              expiryDate:
+                item.expiryDate,
+
+              /*
+                Backend stores the largest selling
+                package as primary pricing input.
+
+                Smaller prices are generated again
+                server-side from conversion.
+              */
+              primaryMrp:
+                Number(
+                  primaryUnit?.mrp ??
+                    0,
+                ),
+            };
+          },
+        ),
     };
 
-    setPurchases(
-      (
-        currentPurchases,
-      ) => [
-        newPurchase,
-        ...currentPurchases,
-      ],
-    );
+    try {
+      setIsSaving(
+        true,
+      );
 
-    closePurchaseModal();
+      setErrorMessage(
+        "",
+      );
+
+      const response =
+        await fetch(
+          "/api/purchases",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify(
+                payload,
+              ),
+          },
+        );
+
+      const result:
+        MutationApiResponse =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Failed to save purchase.",
+        );
+      }
+
+      await loadPurchases();
+
+      setIsPurchaseModalOpen(
+        false,
+      );
+
+      setForm(
+        createEmptyForm(),
+      );
+    } catch (error) {
+      console.error(
+        "Save purchase error:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to save purchase.";
+
+      setErrorMessage(
+        message,
+      );
+
+      window.alert(
+        message,
+      );
+    } finally {
+      setIsSaving(
+        false,
+      );
+    }
   }
 
   /* =======================================================
-     PENDING → RECEIVED
+     PENDING → RECEIVED → DATABASE STOCK
   ======================================================= */
 
-  function receivePurchase(
+  async function receivePurchase(
     purchaseId: string,
   ) {
+    if (
+      receivingPurchaseId
+    ) {
+      return;
+    }
+
     const purchase =
       purchases.find(
-        (purchase) =>
-          purchase.id ===
+        (
+          currentPurchase,
+        ) =>
+          currentPurchase.id ===
           purchaseId,
       );
-
-    /*
-      Critical protection:
-
-      Only Pending purchases can be received.
-    */
 
     if (
       !purchase ||
@@ -1906,53 +1765,94 @@ export default function PurchasePage() {
 
     const confirmed =
       window.confirm(
-        `Receive ${purchase.id}?\n\nAfter receiving, this purchase cannot be received a second time.`,
+        `Receive ${purchase.id}?\n\nThis will add the purchase batches to inventory. The same purchase cannot be received twice.`,
       );
 
     if (!confirmed) {
       return;
     }
 
-    const updatedPurchase:
-      Purchase = {
-      ...purchase,
+    try {
+      setReceivingPurchaseId(
+        purchaseId,
+      );
 
-      status:
-        "Received",
+      setErrorMessage(
+        "",
+      );
 
-      receivedAt:
-        new Date().toISOString(),
+      const response =
+        await fetch(
+          `/api/purchases/${encodeURIComponent(
+            purchaseId,
+          )}/receive`,
+          {
+            method:
+              "POST",
+          },
+        );
 
-      receivedBy:
-        "Admin User",
-    };
+      const result:
+        MutationApiResponse =
+        await response.json();
 
-    setPurchases(
-      (
-        currentPurchases,
-      ) =>
-        currentPurchases.map(
-          (purchase) =>
-            purchase.id ===
-            purchaseId
-              ? updatedPurchase
-              : purchase,
-        ),
-    );
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Failed to receive purchase.",
+        );
+      }
 
-    /*
-      Keep modal open and immediately
-      show Received status.
-    */
+      const freshPurchases =
+        await loadPurchases();
 
-    setSelectedPurchase(
-      updatedPurchase,
-    );
+      const updatedPurchase =
+        freshPurchases.find(
+          (
+            currentPurchase,
+          ) =>
+            currentPurchase.id ===
+            purchaseId,
+        );
+
+      setSelectedPurchase(
+        updatedPurchase ??
+          null,
+      );
+    } catch (error) {
+      console.error(
+        "Receive purchase error:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to receive purchase.";
+
+      setErrorMessage(
+        message,
+      );
+
+      window.alert(
+        message,
+      );
+    } finally {
+      setReceivingPurchaseId(
+        null,
+      );
+    }
   }
 
+  /* =======================================================
+     STATUS CLASS
+  ======================================================= */
+
   function getStatusClass(
-    status:
-      PurchaseStatus,
+    status: PurchaseStatus,
   ) {
     if (
       status ===
@@ -1979,11 +1879,14 @@ export default function PurchasePage() {
     <>
       <div className="mx-auto w-full max-w-[1600px] space-y-5">
 
-        {/* HEADER */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
           <div>
+
             <h1 className="text-xl font-semibold text-slate-900">
               Purchase
             </h1>
@@ -1991,6 +1894,7 @@ export default function PurchasePage() {
             <p className="mt-1 text-[12px] text-slate-500">
               Receive medicines with batch, expiry, packaging and batch-specific pricing.
             </p>
+
           </div>
 
           <button
@@ -1998,16 +1902,24 @@ export default function PurchasePage() {
             onClick={
               openPurchaseModal
             }
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
+            disabled={
+              isLoading ||
+              isSaving
+            }
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-sky-300"
           >
+
             <Plus className="h-4 w-4" />
 
             New Purchase
+
           </button>
 
         </div>
 
-        {/* INVENTORY INFO */}
+        {/* =================================================
+            INVENTORY INFO
+        ================================================= */}
 
         <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3">
 
@@ -2016,6 +1928,7 @@ export default function PurchasePage() {
             <PackagePlus className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
 
             <div>
+
               <p className="text-[12px] font-semibold text-sky-900">
                 Inventory Entry Point
               </p>
@@ -2023,13 +1936,42 @@ export default function PurchasePage() {
               <p className="mt-1 text-[11px] leading-5 text-sky-700">
                 Received purchases are inventory-ready. Pending purchases remain outside available stock until they are received.
               </p>
+
             </div>
 
           </div>
 
         </div>
 
-        {/* STAT CARDS */}
+        {/* =================================================
+            ERROR
+        ================================================= */}
+
+        {errorMessage ? (
+
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+
+            <p className="text-[11px] text-rose-700">
+              {errorMessage}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                void loadPurchases()
+              }
+              className="shrink-0 text-[10px] font-semibold text-rose-700 underline"
+            >
+              Retry
+            </button>
+
+          </div>
+
+        ) : null}
+
+        {/* =================================================
+            STAT CARDS
+        ================================================= */}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 
@@ -2075,7 +2017,9 @@ export default function PurchasePage() {
 
         </div>
 
-        {/* SEARCH */}
+        {/* =================================================
+            SEARCH
+        ================================================= */}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
 
@@ -2118,6 +2062,7 @@ export default function PurchasePage() {
               }
               className="h-10 min-w-[210px] rounded-xl border border-slate-200 bg-white px-3 text-[11px] text-slate-600 outline-none"
             >
+
               <option value="All">
                 All Status
               </option>
@@ -2133,13 +2078,16 @@ export default function PurchasePage() {
               <option value="Cancelled">
                 Cancelled
               </option>
+
             </select>
 
           </div>
 
         </div>
 
-        {/* TABLE */}
+        {/* =================================================
+            PURCHASE TABLE
+        ================================================= */}
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
@@ -2193,101 +2141,167 @@ export default function PurchasePage() {
 
               <tbody>
 
-                {filteredPurchases.map(
-                  (
-                    purchase,
-                  ) => (
+                {isLoading ? (
 
-                    <tr
-                      key={
-                        purchase.id
+                  <tr>
+
+                    <td
+                      colSpan={
+                        9
                       }
-                      className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50"
+                      className="px-5 py-16 text-center"
                     >
 
-                      <td className="px-4 py-5 font-mono text-[10px] text-sky-700">
-                        {
-                          purchase.id
-                        }
-                      </td>
+                      <Loader2 className="mx-auto h-7 w-7 animate-spin text-sky-600" />
 
-                      <td className="px-4 py-5 text-[11px] font-medium text-slate-900">
-                        {
-                          purchase.supplier
-                        }
-                      </td>
+                      <p className="mt-3 text-[12px] font-medium text-slate-700">
+                        Loading purchases...
+                      </p>
 
-                      <td className="px-4 py-5 text-[10px] text-slate-500">
-                        {purchase.supplierInvoiceNo ||
-                          "-"}
-                      </td>
+                    </td>
 
-                      <td className="px-4 py-5 text-[10px] text-slate-500">
-                        {formatDate(
-                          purchase.purchaseDate,
-                        )}
-                      </td>
+                  </tr>
 
-                      <td className="px-4 py-5 text-[10px] text-slate-700">
-                        {
-                          purchase.items.length
-                        }
-                      </td>
+                ) : (
 
-                      <td className="px-4 py-5 text-[10px] text-slate-700">
-                        {
-                          new Set(
-                            purchase.items.map(
-                              (
-                                item,
-                              ) =>
-                                item.batchNo,
-                            ),
-                          ).size
-                        }
-                      </td>
+                  <>
+                    {filteredPurchases.map(
+                      (
+                        purchase,
+                      ) => (
 
-                      <td className="px-4 py-5 text-[11px] font-semibold text-emerald-700">
-                        ৳
-                        {formatMoney(
-                          purchase.totalAmount,
-                        )}
-                      </td>
-
-                      <td className="px-4 py-5">
-
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-medium ${getStatusClass(
-                            purchase.status,
-                          )}`}
-                        >
-                          {
-                            purchase.status
+                        <tr
+                          key={
+                            purchase.id
                           }
-                        </span>
-
-                      </td>
-
-                      <td className="px-4 py-5">
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedPurchase(
-                              purchase,
-                            )
-                          }
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 hover:bg-sky-50"
-                          title="View Purchase"
+                          className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50"
                         >
-                          <Eye className="h-4 w-4" />
-                        </button>
 
-                      </td>
+                          <td className="px-4 py-5 font-mono text-[10px] text-sky-700">
+                            {
+                              purchase.id
+                            }
+                          </td>
 
-                    </tr>
+                          <td className="px-4 py-5 text-[11px] font-medium text-slate-900">
+                            {
+                              purchase.supplier
+                            }
+                          </td>
 
-                  ),
+                          <td className="px-4 py-5 text-[10px] text-slate-500">
+
+                            {purchase.supplierInvoiceNo ||
+                              "-"}
+
+                          </td>
+
+                          <td className="px-4 py-5 text-[10px] text-slate-500">
+
+                            {formatDate(
+                              purchase.purchaseDate,
+                            )}
+
+                          </td>
+
+                          <td className="px-4 py-5 text-[10px] text-slate-700">
+                            {
+                              purchase.items
+                                .length
+                            }
+                          </td>
+
+                          <td className="px-4 py-5 text-[10px] text-slate-700">
+
+                            {
+                              new Set(
+                                purchase.items.map(
+                                  (
+                                    item,
+                                  ) =>
+                                    item.batchNo,
+                                ),
+                              ).size
+                            }
+
+                          </td>
+
+                          <td className="px-4 py-5 text-[11px] font-semibold text-emerald-700">
+
+                            ৳
+                            {formatMoney(
+                              purchase.totalAmount,
+                            )}
+
+                          </td>
+
+                          <td className="px-4 py-5">
+
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-medium ${getStatusClass(
+                                purchase.status,
+                              )}`}
+                            >
+                              {
+                                purchase.status
+                              }
+                            </span>
+
+                          </td>
+
+                          <td className="px-4 py-5">
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedPurchase(
+                                  purchase,
+                                )
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 hover:bg-sky-50"
+                              title="View Purchase"
+                            >
+
+                              <Eye className="h-4 w-4" />
+
+                            </button>
+
+                          </td>
+
+                        </tr>
+
+                      ),
+                    )}
+
+                    {filteredPurchases.length ===
+                    0 ? (
+
+                      <tr>
+
+                        <td
+                          colSpan={
+                            9
+                          }
+                          className="px-5 py-16 text-center"
+                        >
+
+                          <ShoppingBag className="mx-auto h-7 w-7 text-slate-300" />
+
+                          <p className="mt-3 text-[12px] font-medium text-slate-700">
+                            No purchases found
+                          </p>
+
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            Create your first purchase using New Purchase.
+                          </p>
+
+                        </td>
+
+                      </tr>
+
+                    ) : null}
+                  </>
+
                 )}
 
               </tbody>
@@ -2331,9 +2345,14 @@ export default function PurchasePage() {
                 onClick={
                   closePurchaseModal
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+                disabled={
+                  isSaving
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
+
                 <X className="h-5 w-5" />
+
               </button>
 
             </div>
@@ -2346,7 +2365,9 @@ export default function PurchasePage() {
 
               <div className="space-y-6 p-5">
 
-                {/* PURCHASE INFO */}
+                {/* =========================================
+                    PURCHASE INFO
+                ========================================= */}
 
                 <section>
 
@@ -2361,44 +2382,51 @@ export default function PurchasePage() {
 
                       <select
                         value={
-                          form.supplier
+                          form.supplierId
+                        }
+                        disabled={
+                          isSaving
                         }
                         onChange={(
                           event,
                         ) =>
-                          setForm({
-                            ...form,
+                          setForm(
+                            (
+                              currentForm,
+                            ) => ({
+                              ...currentForm,
 
-                            supplier:
-                              event.target
-                                .value,
-                          })
+                              supplierId:
+                                event.target
+                                  .value,
+                            }),
+                          )
                         }
-                        className={
-                          inputClass
-                        }
+                        className={`${inputClass} disabled:bg-slate-100`}
                       >
 
                         <option value="">
                           Select supplier
                         </option>
 
-                        {suppliers.map(
+                        {supplierOptions.map(
                           (
                             supplier,
                           ) => (
+
                             <option
                               key={
-                                supplier
+                                supplier.id
                               }
                               value={
-                                supplier
+                                supplier.id
                               }
                             >
                               {
-                                supplier
+                                supplier.name
                               }
                             </option>
+
                           ),
                         )}
 
@@ -2413,21 +2441,26 @@ export default function PurchasePage() {
                         value={
                           form.supplierInvoiceNo
                         }
+                        disabled={
+                          isSaving
+                        }
                         onChange={(
                           event,
                         ) =>
-                          setForm({
-                            ...form,
+                          setForm(
+                            (
+                              currentForm,
+                            ) => ({
+                              ...currentForm,
 
-                            supplierInvoiceNo:
-                              event.target
-                                .value,
-                          })
+                              supplierInvoiceNo:
+                                event.target
+                                  .value,
+                            }),
+                          )
                         }
                         placeholder="e.g. INV-1213"
-                        className={
-                          inputClass
-                        }
+                        className={`${inputClass} disabled:bg-slate-100`}
                       />
 
                     </FormField>
@@ -2439,20 +2472,25 @@ export default function PurchasePage() {
                         value={
                           form.purchaseDate
                         }
+                        disabled={
+                          isSaving
+                        }
                         onChange={(
                           event,
                         ) =>
-                          setForm({
-                            ...form,
+                          setForm(
+                            (
+                              currentForm,
+                            ) => ({
+                              ...currentForm,
 
-                            purchaseDate:
-                              event.target
-                                .value,
-                          })
+                              purchaseDate:
+                                event.target
+                                  .value,
+                            }),
+                          )
                         }
-                        className={
-                          inputClass
-                        }
+                        className={`${inputClass} disabled:bg-slate-100`}
                       />
 
                     </FormField>
@@ -2463,20 +2501,27 @@ export default function PurchasePage() {
                         value={
                           form.status
                         }
+                        disabled={
+                          isSaving
+                        }
                         onChange={(
                           event,
                         ) =>
-                          setForm({
-                            ...form,
+                          setForm(
+                            (
+                              currentForm,
+                            ) => ({
+                              ...currentForm,
 
-                            status:
-                              event.target
-                                .value as PurchaseStatus,
-                          })
+                              status:
+                                event.target
+                                  .value as
+                                  | "Received"
+                                  | "Pending",
+                            }),
+                          )
                         }
-                        className={
-                          inputClass
-                        }
+                        className={`${inputClass} disabled:bg-slate-100`}
                       >
 
                         <option value="Received">
@@ -2487,10 +2532,6 @@ export default function PurchasePage() {
                           Pending
                         </option>
 
-                        <option value="Cancelled">
-                          Cancelled
-                        </option>
-
                       </select>
 
                     </FormField>
@@ -2499,7 +2540,9 @@ export default function PurchasePage() {
 
                 </section>
 
-                {/* ITEMS */}
+                {/* =========================================
+                    ITEMS
+                ========================================= */}
 
                 <section className="border-t border-slate-200 pt-6">
 
@@ -2515,11 +2558,16 @@ export default function PurchasePage() {
                       onClick={
                         addItem
                       }
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 text-[11px] font-semibold text-sky-700 hover:bg-sky-100"
+                      disabled={
+                        isSaving
+                      }
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 text-[11px] font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
+
                       <Plus className="h-4 w-4" />
 
                       Add Item
+
                     </button>
 
                   </div>
@@ -2531,23 +2579,18 @@ export default function PurchasePage() {
                         item,
                         index,
                       ) => {
-
                         const medicine =
                           medicineCatalog.find(
                             (
-                              medicine,
+                              currentMedicine,
                             ) =>
-                              medicine.id ===
+                              currentMedicine.id ===
                               item.medicineId,
                           );
 
-                        /*
-                          Box first, Strip second.
-                        */
-
                         const purchasableUnits =
-                          medicine?.units
-                            .filter(
+                          medicine
+                            ?.units.filter(
                               (
                                 unit,
                               ) =>
@@ -2555,11 +2598,11 @@ export default function PurchasePage() {
                             )
                             .sort(
                               (
-                                a,
-                                b,
+                                first,
+                                second,
                               ) =>
-                                b.conversionToBase -
-                                a.conversionToBase,
+                                second.conversionToBase -
+                                first.conversionToBase,
                             ) ??
                           [];
 
@@ -2576,8 +2619,7 @@ export default function PurchasePage() {
                           quantity *
                           (Number(
                             item.unitCost,
-                          ) ||
-                            0);
+                          ) || 0);
 
                         const primaryPriceUnit =
                           getPrimaryPricingUnit(
@@ -2616,14 +2658,19 @@ export default function PurchasePage() {
 
                                 <button
                                   type="button"
+                                  disabled={
+                                    isSaving
+                                  }
                                   onClick={() =>
                                     removeItem(
                                       item.id,
                                     )
                                   }
-                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50"
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
+
                                   <Trash2 className="h-4 w-4" />
+
                                 </button>
 
                               ) : null}
@@ -2640,6 +2687,9 @@ export default function PurchasePage() {
                                   value={
                                     item.medicineId
                                   }
+                                  disabled={
+                                    isSaving
+                                  }
                                   onChange={(
                                     event,
                                   ) =>
@@ -2650,9 +2700,7 @@ export default function PurchasePage() {
                                         .value,
                                     )
                                   }
-                                  className={
-                                    inputClass
-                                  }
+                                  className={`${inputClass} disabled:bg-slate-100`}
                                 >
 
                                   <option value="">
@@ -2661,19 +2709,19 @@ export default function PurchasePage() {
 
                                   {medicineCatalog.map(
                                     (
-                                      medicine,
+                                      currentMedicine,
                                     ) => (
 
                                       <option
                                         key={
-                                          medicine.id
+                                          currentMedicine.id
                                         }
                                         value={
-                                          medicine.id
+                                          currentMedicine.id
                                         }
                                       >
                                         {
-                                          medicine.name
+                                          currentMedicine.name
                                         }
                                       </option>
 
@@ -2691,7 +2739,8 @@ export default function PurchasePage() {
                                     item.purchaseUnit
                                   }
                                   disabled={
-                                    !medicine
+                                    !medicine ||
+                                    isSaving
                                   }
                                   onChange={(
                                     event,
@@ -2752,6 +2801,9 @@ export default function PurchasePage() {
                                   value={
                                     item.quantity
                                   }
+                                  disabled={
+                                    isSaving
+                                  }
                                   onChange={(
                                     event,
                                   ) =>
@@ -2765,9 +2817,7 @@ export default function PurchasePage() {
                                     )
                                   }
                                   placeholder="e.g. 5"
-                                  className={
-                                    inputClass
-                                  }
+                                  className={`${inputClass} disabled:bg-slate-100`}
                                 />
 
                               </FormField>
@@ -2786,6 +2836,9 @@ export default function PurchasePage() {
                                   value={
                                     item.unitCost
                                   }
+                                  disabled={
+                                    isSaving
+                                  }
                                   onChange={(
                                     event,
                                   ) =>
@@ -2799,9 +2852,7 @@ export default function PurchasePage() {
                                     )
                                   }
                                   placeholder="৳0.00"
-                                  className={
-                                    inputClass
-                                  }
+                                  className={`${inputClass} disabled:bg-slate-100`}
                                 />
 
                               </FormField>
@@ -2819,6 +2870,9 @@ export default function PurchasePage() {
                                   value={
                                     item.batchNo
                                   }
+                                  disabled={
+                                    isSaving
+                                  }
                                   onChange={(
                                     event,
                                   ) =>
@@ -2832,9 +2886,7 @@ export default function PurchasePage() {
                                     )
                                   }
                                   placeholder="e.g. NPA-2608-A"
-                                  className={
-                                    inputClass
-                                  }
+                                  className={`${inputClass} disabled:bg-slate-100`}
                                 />
 
                               </FormField>
@@ -2845,6 +2897,9 @@ export default function PurchasePage() {
                                   type="date"
                                   value={
                                     item.expiryDate
+                                  }
+                                  disabled={
+                                    isSaving
                                   }
                                   onChange={(
                                     event,
@@ -2858,9 +2913,7 @@ export default function PurchasePage() {
                                         .value,
                                     )
                                   }
-                                  className={
-                                    inputClass
-                                  }
+                                  className={`${inputClass} disabled:bg-slate-100`}
                                 />
 
                               </FormField>
@@ -2881,25 +2934,33 @@ export default function PurchasePage() {
                                   </p>
 
                                   <p className="mt-1 text-[13px] font-semibold text-sky-900">
+
                                     {baseQuantity.toLocaleString(
                                       "en-US",
                                     )}{" "}
+
                                     {
                                       medicine.baseUnit
                                     }
+
                                   </p>
 
                                   <p className="mt-1 text-[9px] text-sky-600">
+
                                     {
                                       quantity
                                     }{" "}
+
                                     {
                                       item.purchaseUnit
                                     }{" "}
+
                                     ×{" "}
+
                                     {
                                       item.conversionToBase
                                     }
+
                                   </p>
 
                                 </div>
@@ -2911,10 +2972,12 @@ export default function PurchasePage() {
                                   </p>
 
                                   <p className="mt-1 text-[13px] font-semibold text-emerald-900">
+
                                     ৳
                                     {formatMoney(
                                       lineTotal,
                                     )}
+
                                   </p>
 
                                 </div>
@@ -2937,10 +3000,14 @@ export default function PurchasePage() {
                                   </h4>
 
                                   <p className="mt-1 text-[9px] text-slate-500">
+
                                     Enter only{" "}
+
                                     {primaryPriceUnit?.unitName ??
                                       "largest package"}{" "}
+
                                     MRP. Smaller-unit prices are calculated automatically from unit conversion.
+
                                   </p>
 
                                 </div>
@@ -2951,7 +3018,6 @@ export default function PurchasePage() {
                                     (
                                       price,
                                     ) => {
-
                                       const isPrimary =
                                         price.unitName ===
                                         primaryPriceUnit
@@ -2979,17 +3045,23 @@ export default function PurchasePage() {
                                               </p>
 
                                               <p className="mt-1 text-[9px] text-slate-400">
+
                                                 1{" "}
+
                                                 {
                                                   price.unitName
                                                 }{" "}
+
                                                 ={" "}
+
                                                 {
                                                   price.conversionToBase
                                                 }{" "}
+
                                                 {
                                                   medicine?.baseUnit
                                                 }
+
                                               </p>
 
                                             </div>
@@ -3023,12 +3095,6 @@ export default function PurchasePage() {
                                           >
 
                                             <input
-                                              /*
-                                                Text + decimal inputMode is intentional.
-
-                                                This removes browser number spinner
-                                                and fixes typing/backspace behaviour.
-                                              */
                                               type="text"
                                               inputMode={
                                                 isPrimary
@@ -3039,7 +3105,8 @@ export default function PurchasePage() {
                                                 price.mrp
                                               }
                                               readOnly={
-                                                !isPrimary
+                                                !isPrimary ||
+                                                isSaving
                                               }
                                               onChange={(
                                                 event,
@@ -3091,7 +3158,9 @@ export default function PurchasePage() {
 
                 </section>
 
-                {/* GRAND TOTAL */}
+                {/* =========================================
+                    GRAND TOTAL
+                ========================================= */}
 
                 <div className="flex justify-end border-t border-slate-200 pt-5">
 
@@ -3104,10 +3173,12 @@ export default function PurchasePage() {
                       </span>
 
                       <span>
+
                         ৳
                         {formatMoney(
                           formTotal,
                         )}
+
                       </span>
 
                     </div>
@@ -3119,10 +3190,12 @@ export default function PurchasePage() {
                       </span>
 
                       <span className="text-[18px] font-bold text-sky-700">
+
                         ৳
                         {formatMoney(
                           formTotal,
                         )}
+
                       </span>
 
                     </div>
@@ -3133,7 +3206,9 @@ export default function PurchasePage() {
 
               </div>
 
-              {/* MODAL FOOTER */}
+              {/* ===========================================
+                  MODAL FOOTER
+              =========================================== */}
 
               <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
 
@@ -3142,16 +3217,36 @@ export default function PurchasePage() {
                   onClick={
                     closePurchaseModal
                   }
-                  className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                  disabled={
+                    isSaving
+                  }
+                  className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  className="h-10 rounded-xl bg-sky-600 px-5 text-[11px] font-semibold text-white hover:bg-sky-700"
+                  disabled={
+                    isSaving
+                  }
+                  className="inline-flex h-10 min-w-[135px] items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-sky-400"
                 >
-                  Save Purchase
+
+                  {isSaving ? (
+
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+
+                      Saving...
+                    </>
+
+                  ) : (
+
+                    "Save Purchase"
+
+                  )}
+
                 </button>
 
               </div>
@@ -3194,14 +3289,20 @@ export default function PurchasePage() {
 
               <button
                 type="button"
+                disabled={
+                  receivingPurchaseId ===
+                  selectedPurchase.id
+                }
                 onClick={() =>
                   setSelectedPurchase(
                     null,
                   )
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-40"
               >
+
                 <X className="h-5 w-5" />
+
               </button>
 
             </div>
@@ -3265,12 +3366,14 @@ export default function PurchasePage() {
                         <div>
 
                           <p className="text-[12px] font-semibold text-slate-900">
+
                             {index +
                               1}
                             .{" "}
                             {
                               item.medicine
                             }
+
                           </p>
 
                           <p className="mt-1 text-[9px] text-slate-400">
@@ -3372,11 +3475,11 @@ export default function PurchasePage() {
                             {[...item.unitPrices]
                               .sort(
                                 (
-                                  a,
-                                  b,
+                                  first,
+                                  second,
                                 ) =>
-                                  b.conversionToBase -
-                                  a.conversionToBase,
+                                  second.conversionToBase -
+                                  first.conversionToBase,
                               )
                               .map(
                                 (
@@ -3397,27 +3500,34 @@ export default function PurchasePage() {
                                     </td>
 
                                     <td className="px-4 py-3 text-[10px] text-slate-500">
+
                                       ×
                                       {
                                         price.conversionToBase
                                       }{" "}
+
                                       {
                                         item.baseUnit
                                       }
+
                                     </td>
 
                                     <td className="px-4 py-3 text-[10px] font-semibold text-emerald-700">
+
                                       ৳
                                       {formatMoney(
                                         price.sellingPrice,
                                       )}
+
                                     </td>
 
                                     <td className="px-4 py-3 text-[10px] text-slate-600">
+
                                       ৳
                                       {formatMoney(
                                         price.mrp,
                                       )}
+
                                     </td>
 
                                   </tr>
@@ -3451,10 +3561,12 @@ export default function PurchasePage() {
                     </span>
 
                     <span className="text-[16px] font-bold text-sky-700">
+
                       ৳
                       {formatMoney(
                         selectedPurchase.totalAmount,
                       )}
+
                     </span>
 
                   </div>
@@ -3471,12 +3583,16 @@ export default function PurchasePage() {
 
               <button
                 type="button"
+                disabled={
+                  receivingPurchaseId ===
+                  selectedPurchase.id
+                }
                 onClick={() =>
                   setSelectedPurchase(
                     null,
                   )
                 }
-                className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Close
               </button>
@@ -3488,16 +3604,37 @@ export default function PurchasePage() {
 
                 <button
                   type="button"
+                  disabled={
+                    receivingPurchaseId !==
+                    null
+                  }
                   onClick={() =>
-                    receivePurchase(
+                    void receivePurchase(
                       selectedPurchase.id,
                     )
                   }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-[11px] font-semibold text-white hover:bg-emerald-700"
+                  className="inline-flex h-10 min-w-[160px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-400"
                 >
-                  <CheckCircle2 className="h-4 w-4" />
 
-                  Receive Purchase
+                  {receivingPurchaseId ===
+                  selectedPurchase.id ? (
+
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+
+                      Receiving...
+                    </>
+
+                  ) : (
+
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+
+                      Receive Purchase
+                    </>
+
+                  )}
+
                 </button>
 
               ) : null}
@@ -3537,6 +3674,7 @@ function FormField({
   children,
 }: {
   label: string;
+
   children: ReactNode;
 }) {
   return (
@@ -3557,6 +3695,7 @@ function SectionTitle({
   description,
 }: {
   title: string;
+
   description: string;
 }) {
   return (
@@ -3579,6 +3718,7 @@ function DetailBox({
   value,
 }: {
   label: string;
+
   value: string;
 }) {
   return (
@@ -3602,7 +3742,9 @@ function StatCard({
   value,
 }: {
   icon: ReactNode;
+
   label: string;
+
   value:
     | string
     | number;

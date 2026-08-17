@@ -1,7 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import type {
+  ReactNode,
+} from "react";
+
+import {
+  Loader2,
   Minus,
   Plus,
   Search,
@@ -26,26 +36,48 @@ type PaymentStatus =
   | "due";
 
 type MedicineUnit = {
+  id: string;
+
   unitName: string;
+
   conversionToBase: number;
+
   price: number;
+
   sellable: boolean;
 };
 
 type MedicineBatch = {
   id: string;
+
   batchNo: string;
+
   expiryDate: string;
+
   stockBaseQuantity: number;
+
+  status:
+    | "ACTIVE"
+    | "DEPLETED"
+    | "EXPIRED"
+    | "BLOCKED";
 };
 
 type Medicine = {
   id: string;
+
+  databaseId?: number;
+
   name: string;
+
   genericName: string;
+
   category: string;
+
   baseUnit: string;
+
   units: MedicineUnit[];
+
   batches: MedicineBatch[];
 };
 
@@ -53,633 +85,166 @@ type CartItem = {
   id: string;
 
   medicineId: string;
+
   medicineName: string;
 
   baseUnit: string;
 
   unitName: string;
+
   conversionToBase: number;
 
   unitPrice: number;
+
   quantity: number;
 };
 
 type SaleRowDraft = {
   unitName: string;
+
   quantity: string;
 };
 
 type Sale = {
   invoice: string;
+
   customer: string;
+
   mobile: string;
+
   date: string;
+
   items: number;
+
   amount: number;
+
   method: string;
+
   status: PaymentStatus;
+};
+
+type InvoiceItem = {
+  id: string;
+
+  medicineId: string;
+
+  medicineName: string;
+
+  baseUnit?: string;
+
+  unitName: string;
+
+  conversionToBase: number;
+
+  unitPrice: number;
+
+  quantity: number;
 };
 
 type GeneratedInvoice = {
   invoice: string;
 
   customer: string;
+
   mobile: string;
+
   date: string;
 
-  items: CartItem[];
+  items: InvoiceItem[];
 
   subtotal: number;
 
   discountPercent: number;
+
   discountAmount: number;
 
   vatEnabled: boolean;
+
   vatRatePercent: number;
+
   vatAmount: number;
 
   total: number;
 
   paymentMethod: string;
+
   paymentStatus: PaymentStatus;
 
   paidAmount: number;
+
   dueAmount: number;
 };
 
 type SalesSettings = {
   vatEnabled: boolean;
+
   vatRatePercent: number;
 };
 
+type CatalogApiResponse = {
+  success: boolean;
+
+  message?: string;
+
+  data?: Medicine[];
+
+  settings?: SalesSettings;
+};
+
+type SalesApiResponse = {
+  success: boolean;
+
+  message?: string;
+
+  data?: Sale[];
+};
+
+type CreateSaleApiResponse = {
+  success: boolean;
+
+  message?: string;
+
+  data?: GeneratedInvoice;
+};
+
 /* =========================================================
-   SETTINGS
+   DEFAULT SETTINGS
 ========================================================= */
 
-/*
- * Later this value will come from the
- * Settings table / Settings API.
- *
- * VAT is NOT hard-coded in Sales.
- */
 const DEFAULT_SALES_SETTINGS: SalesSettings = {
   vatEnabled: false,
+
   vatRatePercent: 0,
 };
 
 /* =========================================================
-   MEDICINES
-========================================================= */
-
-const initialMedicines: Medicine[] = [
-  {
-    id: "MED-001",
-    name: "Napa 500mg",
-    genericName: "Paracetamol",
-    category: "Pain Relief",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 1.2,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 12,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 200,
-        price: 240,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-NAPA-OLD",
-        batchNo: "NPA-2501",
-        expiryDate: "2026-06-30",
-        stockBaseQuantity: 100,
-      },
-      {
-        id: "BAT-NAPA-A",
-        batchNo: "NPA-2608-A",
-        expiryDate: "2026-12-31",
-        stockBaseQuantity: 1500,
-      },
-      {
-        id: "BAT-NAPA-B",
-        batchNo: "NPA-2608-B",
-        expiryDate: "2027-12-31",
-        stockBaseQuantity: 3000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-002",
-    name: "Ace Plus",
-    genericName: "Paracetamol + Caffeine",
-    category: "Pain Relief",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 2.5,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 25,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 200,
-        price: 500,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-ACE-A",
-        batchNo: "ACE-2608-A",
-        expiryDate: "2027-04-15",
-        stockBaseQuantity: 1800,
-      },
-    ],
-  },
-
-  {
-    id: "MED-003",
-    name: "Napa Extend",
-    genericName: "Paracetamol",
-    category: "Pain Relief",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 2.5,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 25,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 250,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-NEXT-A",
-        batchNo: "NEXT-2608-A",
-        expiryDate: "2027-05-20",
-        stockBaseQuantity: 1600,
-      },
-    ],
-  },
-
-  {
-    id: "MED-004",
-    name: "Seclo 20mg",
-    genericName: "Omeprazole",
-    category: "Gastric / Antacid",
-
-    baseUnit: "Capsule",
-
-    units: [
-      {
-        unitName: "Capsule",
-        conversionToBase: 1,
-        price: 8,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 80,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 800,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-SEC-A",
-        batchNo: "SCL-2608-A",
-        expiryDate: "2026-10-30",
-        stockBaseQuantity: 1500,
-      },
-      {
-        id: "BAT-SEC-B",
-        batchNo: "SCL-2609-B",
-        expiryDate: "2027-04-30",
-        stockBaseQuantity: 2000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-005",
-    name: "Maxpro 20mg",
-    genericName: "Esomeprazole",
-    category: "Gastric / Antacid",
-
-    baseUnit: "Capsule",
-
-    units: [
-      {
-        unitName: "Capsule",
-        conversionToBase: 1,
-        price: 9,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 90,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 900,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-MAX-A",
-        batchNo: "MXP-2608-C",
-        expiryDate: "2028-01-31",
-        stockBaseQuantity: 22000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-006",
-    name: "Sergel 20mg",
-    genericName: "Esomeprazole",
-    category: "Gastric / Antacid",
-
-    baseUnit: "Capsule",
-
-    units: [
-      {
-        unitName: "Capsule",
-        conversionToBase: 1,
-        price: 8.5,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 85,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 850,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-SER-A",
-        batchNo: "SG-2606",
-        expiryDate: "2026-09-25",
-        stockBaseQuantity: 1200,
-      },
-    ],
-  },
-
-  {
-    id: "MED-007",
-    name: "Monas 10mg",
-    genericName: "Montelukast",
-    category: "Allergy",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 15,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 150,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 1500,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-MON-A",
-        batchNo: "MN-2608",
-        expiryDate: "2027-06-15",
-        stockBaseQuantity: 2000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-008",
-    name: "Fexo 120mg",
-    genericName: "Fexofenadine",
-    category: "Allergy",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 5,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 50,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 500,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-FEX-A",
-        batchNo: "FX-2610",
-        expiryDate: "2027-08-12",
-        stockBaseQuantity: 3200,
-      },
-    ],
-  },
-
-  {
-    id: "MED-009",
-    name: "Histacin",
-    genericName: "Chlorpheniramine",
-    category: "Allergy",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 0.8,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 8,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-HIS-A",
-        batchNo: "HS-2609",
-        expiryDate: "2027-01-20",
-        stockBaseQuantity: 80,
-      },
-    ],
-  },
-
-  {
-    id: "MED-010",
-    name: "Amdocal 5mg",
-    genericName: "Amlodipine",
-    category: "Blood Pressure",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 3.5,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 35,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 350,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-AMD-A",
-        batchNo: "AM-2613",
-        expiryDate: "2027-10-10",
-        stockBaseQuantity: 1400,
-      },
-    ],
-  },
-
-  {
-    id: "MED-011",
-    name: "Zimax 500mg",
-    genericName: "Azithromycin",
-    category: "Antibiotic",
-
-    baseUnit: "Tablet",
-
-    units: [
-      {
-        unitName: "Tablet",
-        conversionToBase: 1,
-        price: 12,
-        sellable: true,
-      },
-      {
-        unitName: "Strip",
-        conversionToBase: 10,
-        price: 120,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 100,
-        price: 1200,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-ZIM-A",
-        batchNo: "ZM-2611",
-        expiryDate: "2027-07-30",
-        stockBaseQuantity: 750,
-      },
-    ],
-  },
-
-  {
-    id: "MED-012",
-    name: "Napa Syrup 100ml",
-    genericName: "Paracetamol",
-    category: "Pain Relief",
-
-    baseUnit: "Bottle",
-
-    units: [
-      {
-        unitName: "Bottle",
-        conversionToBase: 1,
-        price: 35,
-        sellable: true,
-      },
-      {
-        unitName: "Box",
-        conversionToBase: 5,
-        price: 175,
-        sellable: true,
-      },
-    ],
-
-    batches: [
-      {
-        id: "BAT-SYR-A",
-        batchNo: "NPS-2608",
-        expiryDate: "2027-09-30",
-        stockBaseQuantity: 55,
-      },
-    ],
-  },
-];
-
-/* =========================================================
-   SALES HISTORY
-========================================================= */
-
-const initialSales: Sale[] = [
-  {
-    invoice: "INV-2026-001",
-    customer: "Rahim Uddin",
-    mobile: "01711234567",
-    date: "06-07-2026",
-    items: 3,
-    amount: 1845,
-    method: "Cash",
-    status: "paid",
-  },
-  {
-    invoice: "INV-2026-002",
-    customer: "Nasrin Begum",
-    mobile: "01812345678",
-    date: "06-07-2026",
-    items: 5,
-    amount: 4230,
-    method: "bKash",
-    status: "paid",
-  },
-  {
-    invoice: "INV-2026-003",
-    customer: "Kamal Hossain",
-    mobile: "01812222222",
-    date: "05-07-2026",
-    items: 2,
-    amount: 960,
-    method: "Cash",
-    status: "partial",
-  },
-];
-
-/* =========================================================
-   DATE + MONEY HELPERS
+   HELPERS
 ========================================================= */
 
 function getTodayDateOnly() {
-  const today = new Date();
+  const today =
+    new Date();
 
   const year =
     today.getFullYear();
 
-  const month = String(
-    today.getMonth() + 1,
-  ).padStart(2, "0");
+  const month =
+    String(
+      today.getMonth() + 1,
+    ).padStart(
+      2,
+      "0",
+    );
 
-  const day = String(
-    today.getDate(),
-  ).padStart(2, "0");
+  const day =
+    String(
+      today.getDate(),
+    ).padStart(
+      2,
+      "0",
+    );
 
   return `${year}-${month}-${day}`;
-}
-
-function getDisplayDate() {
-  const today = new Date();
-
-  const year =
-    today.getFullYear();
-
-  const month = String(
-    today.getMonth() + 1,
-  ).padStart(2, "0");
-
-  const day = String(
-    today.getDate(),
-  ).padStart(2, "0");
-
-  return `${day}-${month}-${year}`;
 }
 
 function roundMoney(
@@ -700,8 +265,11 @@ function formatMoney(
   return value.toLocaleString(
     "en-US",
     {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
     },
   );
 }
@@ -719,9 +287,12 @@ function getSellableUnits(
         unit.sellable,
     )
     .sort(
-      (a, b) =>
-        b.conversionToBase -
-        a.conversionToBase,
+      (
+        first,
+        second,
+      ) =>
+        second.conversionToBase -
+        first.conversionToBase,
     );
 }
 
@@ -733,7 +304,7 @@ function getDefaultSellingUnit(
       medicine,
     );
 
-  const base =
+  const baseUnit =
     units.find(
       (unit) =>
         unit.unitName ===
@@ -741,7 +312,7 @@ function getDefaultSellingUnit(
     );
 
   return (
-    base ??
+    baseUnit ??
     units[
       units.length - 1
     ]
@@ -767,10 +338,12 @@ function createInitialDrafts(
         medicine.id
       ] = {
         unitName:
-          defaultUnit?.unitName ??
+          defaultUnit
+            ?.unitName ??
           "",
 
-        quantity: "1",
+        quantity:
+          "1",
       };
     },
   );
@@ -782,24 +355,34 @@ function createInitialDrafts(
    STOCK HELPERS
 ========================================================= */
 
+function isBatchValid(
+  batch: MedicineBatch,
+) {
+  return (
+    batch.status ===
+      "ACTIVE" &&
+    batch.stockBaseQuantity >
+      0 &&
+    batch.expiryDate >=
+      getTodayDateOnly()
+  );
+}
+
 function getValidStockBase(
   medicine: Medicine,
 ) {
-  const today =
-    getTodayDateOnly();
-
   return medicine.batches
     .filter(
-      (batch) =>
-        batch.stockBaseQuantity >
-          0 &&
-        batch.expiryDate >=
-          today,
+      isBatchValid,
     )
     .reduce(
-      (sum, batch) =>
-        sum +
+      (
+        total,
+        batch,
+      ) =>
+        total +
         batch.stockBaseQuantity,
+
       0,
     );
 }
@@ -815,90 +398,23 @@ function getExpiredStockBase(
       (batch) =>
         batch.stockBaseQuantity >
           0 &&
-        batch.expiryDate <
-          today,
+        (
+          batch.status ===
+            "EXPIRED" ||
+          batch.expiryDate <
+            today
+        ),
     )
     .reduce(
-      (sum, batch) =>
-        sum +
+      (
+        total,
+        batch,
+      ) =>
+        total +
         batch.stockBaseQuantity,
+
       0,
     );
-}
-
-/*
- * FEFO
- *
- * First Expiry First Out
- */
-function deductStockFEFO(
-  medicine: Medicine,
-  requestedBaseQuantity: number,
-): Medicine {
-  let remaining =
-    requestedBaseQuantity;
-
-  const today =
-    getTodayDateOnly();
-
-  const batches =
-    medicine.batches.map(
-      (batch) => ({
-        ...batch,
-      }),
-    );
-
-  const validBatches =
-    batches
-      .map(
-        (batch, index) => ({
-          batch,
-          index,
-        }),
-      )
-      .filter(
-        ({ batch }) =>
-          batch.stockBaseQuantity >
-            0 &&
-          batch.expiryDate >=
-            today,
-      )
-      .sort((a, b) =>
-        a.batch.expiryDate.localeCompare(
-          b.batch.expiryDate,
-        ),
-      );
-
-  for (
-    const item of validBatches
-  ) {
-    if (
-      remaining <= 0
-    ) {
-      break;
-    }
-
-    const batch =
-      batches[
-        item.index
-      ];
-
-    const deduction =
-      Math.min(
-        remaining,
-        batch.stockBaseQuantity,
-      );
-
-    batch.stockBaseQuantity -=
-      deduction;
-
-    remaining -= deduction;
-  }
-
-  return {
-    ...medicine,
-    batches,
-  };
 }
 
 /* =========================================================
@@ -906,26 +422,33 @@ function deductStockFEFO(
 ========================================================= */
 
 export default function SalesPage() {
+  /* =======================================================
+     DATABASE DATA
+  ======================================================= */
+
   const [
     medicines,
     setMedicines,
   ] =
-    useState<Medicine[]>(
-      initialMedicines,
-    );
+    useState<Medicine[]>([]);
 
   const [
     recentSales,
     setRecentSales,
   ] =
-    useState<Sale[]>(
-      initialSales,
-    );
+    useState<Sale[]>([]);
 
-  const [settings] =
+  const [
+    settings,
+    setSettings,
+  ] =
     useState<SalesSettings>(
       DEFAULT_SALES_SETTINGS,
     );
+
+  /* =======================================================
+     SALE DRAFTS
+  ======================================================= */
 
   const [
     drafts,
@@ -936,11 +459,7 @@ export default function SalesPage() {
         string,
         SaleRowDraft
       >
-    >(() =>
-      createInitialDrafts(
-        initialMedicines,
-      ),
-    );
+    >({});
 
   const [
     cart,
@@ -950,29 +469,37 @@ export default function SalesPage() {
       [],
     );
 
+  /* =======================================================
+     SEARCH
+  ======================================================= */
+
   const [
     searchTerm,
     setSearchTerm,
-  ] = useState("");
+  ] =
+    useState("");
 
-  /*
-   * NEW CATEGORY FILTER
-   */
   const [
     categoryFilter,
     setCategoryFilter,
   ] =
     useState("All");
 
+  /* =======================================================
+     BILLING
+  ======================================================= */
+
   const [
     customerName,
     setCustomerName,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     mobileNumber,
     setMobileNumber,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     paymentStatus,
@@ -993,12 +520,18 @@ export default function SalesPage() {
   const [
     partialPaidAmount,
     setPartialPaidAmount,
-  ] = useState("");
+  ] =
+    useState("");
 
   const [
     discountPercent,
     setDiscountPercent,
-  ] = useState("0");
+  ] =
+    useState("0");
+
+  /* =======================================================
+     UI STATE
+  ======================================================= */
 
   const [
     generatedInvoice,
@@ -1008,14 +541,267 @@ export default function SalesPage() {
       null,
     );
 
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
+    useState(true);
+
+  const [
+    isSubmitting,
+    setIsSubmitting,
+  ] =
+    useState(false);
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] =
+    useState("");
+
   /* =======================================================
-     CATEGORY LIST
+     INITIAL DATABASE LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    async function loadInitialData() {
+      try {
+        const [
+          catalogResponse,
+          salesResponse,
+        ] =
+          await Promise.all([
+            fetch(
+              "/api/sales/catalog",
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              },
+            ),
+
+            fetch(
+              "/api/sales",
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+
+                signal:
+                  controller.signal,
+              },
+            ),
+          ]);
+
+        const catalogResult:
+          CatalogApiResponse =
+          await catalogResponse.json();
+
+        const salesResult:
+          SalesApiResponse =
+          await salesResponse.json();
+
+        if (
+          !catalogResponse.ok ||
+          !catalogResult.success
+        ) {
+          throw new Error(
+            catalogResult.message ||
+              "Failed to load medicine catalog.",
+          );
+        }
+
+        if (
+          !salesResponse.ok ||
+          !salesResult.success
+        ) {
+          throw new Error(
+            salesResult.message ||
+              "Failed to load recent sales.",
+          );
+        }
+
+        if (
+          controller.signal
+            .aborted
+        ) {
+          return;
+        }
+
+        const loadedMedicines =
+          catalogResult.data ??
+          [];
+
+        setMedicines(
+          loadedMedicines,
+        );
+
+        setDrafts(
+          createInitialDrafts(
+            loadedMedicines,
+          ),
+        );
+
+        setRecentSales(
+          salesResult.data ??
+            [],
+        );
+
+        setSettings(
+          catalogResult.settings ??
+            DEFAULT_SALES_SETTINGS,
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name ===
+            "AbortError"
+        ) {
+          return;
+        }
+
+        console.error(
+          "Sales initial load error:",
+          error,
+        );
+
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setErrorMessage(
+            error instanceof
+              Error
+              ? error.message
+              : "Failed to load sales data.",
+          );
+        }
+      } finally {
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setIsLoading(
+            false,
+          );
+        }
+      }
+    }
+
+    void loadInitialData();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  /* =======================================================
+     RELOAD DATABASE DATA
+
+     Called after a completed sale.
+  ======================================================= */
+
+  async function reloadSalesData() {
+    const [
+      catalogResponse,
+      salesResponse,
+    ] =
+      await Promise.all([
+        fetch(
+          "/api/sales/catalog",
+          {
+            method:
+              "GET",
+
+            cache:
+              "no-store",
+          },
+        ),
+
+        fetch(
+          "/api/sales",
+          {
+            method:
+              "GET",
+
+            cache:
+              "no-store",
+          },
+        ),
+      ]);
+
+    const catalogResult:
+      CatalogApiResponse =
+      await catalogResponse.json();
+
+    const salesResult:
+      SalesApiResponse =
+      await salesResponse.json();
+
+    if (
+      !catalogResponse.ok ||
+      !catalogResult.success
+    ) {
+      throw new Error(
+        catalogResult.message ||
+          "Failed to refresh stock.",
+      );
+    }
+
+    if (
+      !salesResponse.ok ||
+      !salesResult.success
+    ) {
+      throw new Error(
+        salesResult.message ||
+          "Failed to refresh sales.",
+      );
+    }
+
+    const freshMedicines =
+      catalogResult.data ??
+      [];
+
+    setMedicines(
+      freshMedicines,
+    );
+
+    setDrafts(
+      createInitialDrafts(
+        freshMedicines,
+      ),
+    );
+
+    setRecentSales(
+      salesResult.data ??
+        [],
+    );
+
+    setSettings(
+      catalogResult.settings ??
+        DEFAULT_SALES_SETTINGS,
+    );
+  }
+
+  /* =======================================================
+     CATEGORIES
   ======================================================= */
 
   const categories =
     useMemo(() => {
       return [
         "All",
+
         ...Array.from(
           new Set(
             medicines.map(
@@ -1028,7 +814,7 @@ export default function SalesPage() {
     }, [medicines]);
 
   /* =======================================================
-     SEARCH + CATEGORY
+     FILTERED MEDICINES
   ======================================================= */
 
   const filteredMedicines =
@@ -1046,11 +832,13 @@ export default function SalesPage() {
               .includes(
                 search,
               ) ||
+
             medicine.genericName
               .toLowerCase()
               .includes(
                 search,
               ) ||
+
             medicine.category
               .toLowerCase()
               .includes(
@@ -1076,7 +864,16 @@ export default function SalesPage() {
     ]);
 
   /* =======================================================
-     RESERVED CART STOCK
+     CART RESERVED STOCK
+
+     Example:
+
+     Cart:
+       1 Box   = 100 Tablet
+       5 Strip = 50 Tablet
+       3 Tab   = 3 Tablet
+
+     Reserved = 153 Tablet
   ======================================================= */
 
   function getReservedBase(
@@ -1089,10 +886,14 @@ export default function SalesPage() {
           medicineId,
       )
       .reduce(
-        (sum, item) =>
-          sum +
+        (
+          total,
+          item,
+        ) =>
+          total +
           item.quantity *
             item.conversionToBase,
+
         0,
       );
   }
@@ -1113,7 +914,7 @@ export default function SalesPage() {
   }
 
   /* =======================================================
-     ROW DRAFT
+     DRAFT UNIT
   ======================================================= */
 
   function updateUnit(
@@ -1126,19 +927,28 @@ export default function SalesPage() {
 
         [medicineId]: {
           unitName,
-          quantity: "1",
+
+          quantity:
+            "1",
         },
       }),
     );
   }
 
+  /* =======================================================
+     DRAFT QUANTITY
+  ======================================================= */
+
   function updateQuantity(
     medicineId: string,
     value: string,
   ) {
+    /*
+     * Blank input allowed so Backspace works.
+     * Whole quantity only.
+     */
     if (
-      value !== "" &&
-      !/^\d+$/.test(
+      !/^\d*$/.test(
         value,
       )
     ) {
@@ -1150,9 +960,11 @@ export default function SalesPage() {
         ...current,
 
         [medicineId]: {
-          ...current[
-            medicineId
-          ],
+          unitName:
+            current[
+              medicineId
+            ]?.unitName ??
+            "",
 
           quantity:
             value,
@@ -1179,15 +991,25 @@ export default function SalesPage() {
 
     const unit =
       medicine.units.find(
-        (unit) =>
-          unit.unitName ===
+        (currentUnit) =>
+          currentUnit.unitName ===
             draft.unitName &&
-          unit.sellable,
+          currentUnit.sellable,
       );
 
     if (!unit) {
       window.alert(
         "Please select a valid selling unit.",
+      );
+
+      return;
+    }
+
+    if (
+      unit.price <= 0
+    ) {
+      window.alert(
+        `${medicine.name} does not have a valid selling price for ${unit.unitName}.`,
       );
 
       return;
@@ -1205,7 +1027,7 @@ export default function SalesPage() {
       quantity <= 0
     ) {
       window.alert(
-        "Please enter a valid whole quantity.",
+        "Quantity must be a positive whole number.",
       );
 
       return;
@@ -1234,7 +1056,7 @@ export default function SalesPage() {
     }
 
     const cartId =
-      `${medicine.id}-${unit.unitName}`;
+      `${medicine.id}-${unit.id}`;
 
     const existing =
       cart.find(
@@ -1266,7 +1088,8 @@ export default function SalesPage() {
           ...current,
 
           {
-            id: cartId,
+            id:
+              cartId,
 
             medicineId:
               medicine.id,
@@ -1301,14 +1124,15 @@ export default function SalesPage() {
             medicine.id
           ],
 
-          quantity: "1",
+          quantity:
+            "1",
         },
       }),
     );
   }
 
   /* =======================================================
-     CART CONTROLS
+     REMOVE CART ITEM
   ======================================================= */
 
   function removeCartItem(
@@ -1323,59 +1147,9 @@ export default function SalesPage() {
     );
   }
 
-  function increaseCartItem(
-    item: CartItem,
-  ) {
-    const medicine =
-      medicines.find(
-        (medicine) =>
-          medicine.id ===
-          item.medicineId,
-      );
-
-    if (!medicine) {
-      return;
-    }
-
-    const valid =
-      getValidStockBase(
-        medicine,
-      );
-
-    const reserved =
-      getReservedBase(
-        medicine.id,
-      );
-
-    if (
-      reserved +
-        item.conversionToBase >
-      valid
-    ) {
-      window.alert(
-        `Not enough ${medicine.name} stock.`,
-      );
-
-      return;
-    }
-
-    setCart(
-      (current) =>
-        current.map(
-          (cartItem) =>
-            cartItem.id ===
-            item.id
-              ? {
-                  ...cartItem,
-
-                  quantity:
-                    cartItem.quantity +
-                    1,
-                }
-              : cartItem,
-        ),
-    );
-  }
+  /* =======================================================
+     DECREASE CART
+  ======================================================= */
 
   function decreaseCartItem(
     item: CartItem,
@@ -1405,41 +1179,123 @@ export default function SalesPage() {
   }
 
   /* =======================================================
-     BILL TOTAL
+     INCREASE CART
+
+     Checks TOTAL remaining medicine stock regardless
+     of Box / Strip / Tablet.
+  ======================================================= */
+
+  function increaseCartItem(
+    item: CartItem,
+  ) {
+    const medicine =
+      medicines.find(
+        (currentMedicine) =>
+          currentMedicine.id ===
+          item.medicineId,
+      );
+
+    if (!medicine) {
+      return;
+    }
+
+    const remainingBase =
+      getRemainingBase(
+        medicine,
+      );
+
+    if (
+      item.conversionToBase >
+      remainingBase
+    ) {
+      window.alert(
+        `Not enough stock for another ${item.unitName}.`,
+      );
+
+      return;
+    }
+
+    setCart(
+      (current) =>
+        current.map(
+          (cartItem) =>
+            cartItem.id ===
+            item.id
+              ? {
+                  ...cartItem,
+
+                  quantity:
+                    cartItem.quantity +
+                    1,
+                }
+              : cartItem,
+        ),
+    );
+  }
+
+  /* =======================================================
+     TOTALS
   ======================================================= */
 
   const subtotal =
     useMemo(() => {
       return roundMoney(
         cart.reduce(
-          (sum, item) =>
-            sum +
+          (
+            total,
+            item,
+          ) =>
+            total +
             item.unitPrice *
               item.quantity,
+
           0,
         ),
       );
     }, [cart]);
 
   const safeDiscount =
-    Math.min(
-      100,
-      Math.max(
-        0,
+    useMemo(() => {
+      const value =
         Number(
           discountPercent,
-        ) || 0,
-      ),
-    );
+        );
+
+      if (
+        !Number.isFinite(
+          value,
+        )
+      ) {
+        return 0;
+      }
+
+      return Math.min(
+        100,
+
+        Math.max(
+          0,
+          value,
+        ),
+      );
+    }, [
+      discountPercent,
+    ]);
 
   const discountAmount =
-    roundMoney(
-      subtotal *
-        (safeDiscount /
-          100),
-    );
+    useMemo(() => {
+      return roundMoney(
+        subtotal *
+          (
+            safeDiscount /
+            100
+          ),
+      );
+    }, [
+      subtotal,
+      safeDiscount,
+    ]);
 
-  const afterDiscount =
+  const subtotalAfterDiscount =
     roundMoney(
       subtotal -
         discountAmount,
@@ -1448,92 +1304,64 @@ export default function SalesPage() {
   const vatAmount =
     settings.vatEnabled
       ? roundMoney(
-          afterDiscount *
-            (settings.vatRatePercent /
-              100),
+          subtotalAfterDiscount *
+            (
+              settings.vatRatePercent /
+              100
+            ),
         )
       : 0;
 
   const total =
     roundMoney(
-      afterDiscount +
+      subtotalAfterDiscount +
         vatAmount,
     );
 
-  let paidAmount = 0;
+  const partialPaid =
+    Number(
+      partialPaidAmount,
+    ) || 0;
 
-  if (
+  const paidAmount =
     paymentStatus ===
     "paid"
-  ) {
-    paidAmount =
-      total;
-  }
-
-  if (
-    paymentStatus ===
-    "partial"
-  ) {
-    paidAmount =
-      Math.max(
-        0,
-        Math.min(
-          Number(
-            partialPaidAmount,
-          ) || 0,
-          total,
-        ),
-      );
-  }
+      ? total
+      : paymentStatus ===
+          "partial"
+        ? Math.max(
+            0,
+            Math.min(
+              partialPaid,
+              total,
+            ),
+          )
+        : 0;
 
   const dueAmount =
-    roundMoney(
-      Math.max(
-        0,
-        total -
-          paidAmount,
-      ),
-    );
+    paymentStatus ===
+    "paid"
+      ? 0
+      : paymentStatus ===
+          "partial"
+        ? roundMoney(
+            Math.max(
+              0,
+              total -
+                paidAmount,
+            ),
+          )
+        : total;
 
   /* =======================================================
-     INVOICE ID
+     GENERATE INVOICE → DATABASE
   ======================================================= */
 
-  function generateInvoiceNo() {
-    const year =
-      new Date().getFullYear();
+  async function generateInvoice() {
+    if (isSubmitting) {
+      return;
+    }
 
-    const highest =
-      recentSales.reduce(
-        (
-          result,
-          sale,
-        ) => {
-          const number =
-            Number(
-              sale.invoice
-                .split("-")
-                .pop(),
-            ) || 0;
-
-          return Math.max(
-            result,
-            number,
-          );
-        },
-        0,
-      );
-
-    return `INV-${year}-${String(
-      highest + 1,
-    ).padStart(3, "0")}`;
-  }
-
-  /* =======================================================
-     GENERATE INVOICE
-  ======================================================= */
-
-  function generateInvoice() {
     if (
       cart.length === 0
     ) {
@@ -1544,10 +1372,16 @@ export default function SalesPage() {
       return;
     }
 
+    const cleanCustomerName =
+      customerName.trim();
+
+    const cleanMobile =
+      mobileNumber.trim();
+
     if (
-      mobileNumber.trim() &&
+      cleanMobile &&
       !/^01\d{9}$/.test(
-        mobileNumber.trim(),
+        cleanMobile,
       )
     ) {
       window.alert(
@@ -1558,7 +1392,57 @@ export default function SalesPage() {
     }
 
     /*
-     * Final stock validation.
+     * Due / Partial must belong to
+     * a traceable customer.
+     */
+    if (
+      (
+        paymentStatus ===
+          "partial" ||
+        paymentStatus ===
+          "due"
+      ) &&
+      (
+        !cleanCustomerName ||
+        !cleanMobile
+      )
+    ) {
+      window.alert(
+        "Customer name and mobile number are required for partial or due sales.",
+      );
+
+      return;
+    }
+
+    if (
+      paymentStatus ===
+      "partial"
+    ) {
+      const partial =
+        Number(
+          partialPaidAmount,
+        );
+
+      if (
+        !Number.isFinite(
+          partial,
+        ) ||
+        partial <= 0 ||
+        partial >= total
+      ) {
+        window.alert(
+          "Partial paid amount must be greater than 0 and less than the invoice total.",
+        );
+
+        return;
+      }
+    }
+
+    /*
+     * Final client-side stock check.
+     *
+     * Server performs another locked FEFO check,
+     * so database remains authoritative.
      */
     const medicineIds =
       Array.from(
@@ -1576,12 +1460,16 @@ export default function SalesPage() {
     ) {
       const medicine =
         medicines.find(
-          (medicine) =>
-            medicine.id ===
+          (currentMedicine) =>
+            currentMedicine.id ===
             medicineId,
         );
 
       if (!medicine) {
+        window.alert(
+          "Medicine data changed. Please refresh the page.",
+        );
+
         return;
       }
 
@@ -1593,10 +1481,14 @@ export default function SalesPage() {
               medicineId,
           )
           .reduce(
-            (sum, item) =>
-              sum +
+            (
+              totalRequested,
+              item,
+            ) =>
+              totalRequested +
               item.quantity *
                 item.conversionToBase,
+
             0,
           );
 
@@ -1614,189 +1506,175 @@ export default function SalesPage() {
       }
     }
 
-    if (
-      paymentStatus ===
-      "partial"
-    ) {
-      const amount =
-        Number(
-          partialPaidAmount,
+    try {
+      setIsSubmitting(
+        true,
+      );
+
+      setErrorMessage(
+        "",
+      );
+
+      const response =
+        await fetch(
+          "/api/sales",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                customerName:
+                  cleanCustomerName,
+
+                mobileNumber:
+                  cleanMobile,
+
+                paymentStatus,
+
+                paymentMethod,
+
+                partialPaidAmount:
+                  paymentStatus ===
+                  "partial"
+                    ? Number(
+                        partialPaidAmount,
+                      )
+                    : 0,
+
+                discountPercent:
+                  safeDiscount,
+
+                /*
+                 * Important:
+                 *
+                 * Do NOT send price,
+                 * conversion or stock quantity
+                 * as trusted values.
+                 *
+                 * Server reads those from DB.
+                 */
+                items:
+                  cart.map(
+                    (item) => ({
+                      medicineId:
+                        item.medicineId,
+
+                      unitName:
+                        item.unitName,
+
+                      quantity:
+                        item.quantity,
+                    }),
+                  ),
+              }),
+          },
         );
+
+      const result:
+        CreateSaleApiResponse =
+        await response.json();
 
       if (
-        !amount ||
-        amount <= 0 ||
-        amount >= total
+        !response.ok ||
+        !result.success ||
+        !result.data
       ) {
-        window.alert(
-          "Partial amount must be greater than 0 and less than total.",
+        throw new Error(
+          result.message ||
+            "Failed to complete sale.",
+        );
+      }
+
+      /*
+       * IMPORTANT:
+       * Invoice comes from SERVER,
+       * not frontend calculation.
+       */
+      setGeneratedInvoice(
+        result.data,
+      );
+
+      setCart([]);
+
+      setCustomerName("");
+
+      setMobileNumber("");
+
+      setPaymentStatus(
+        "paid",
+      );
+
+      setPaymentMethod(
+        "Cash",
+      );
+
+      setPartialPaidAmount(
+        "",
+      );
+
+      setDiscountPercent(
+        "0",
+      );
+
+      /*
+       * Sale already succeeded.
+       * Refresh stock + recent sales from DB.
+       */
+      try {
+        await reloadSalesData();
+      } catch (
+        refreshError
+      ) {
+        console.error(
+          "Sale completed but refresh failed:",
+          refreshError,
         );
 
-        return;
+        setErrorMessage(
+          "Sale completed successfully, but the page could not refresh automatically. Please refresh the page.",
+        );
       }
+    } catch (error) {
+      console.error(
+        "Generate invoice error:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to complete sale.";
+
+      setErrorMessage(
+        message,
+      );
+
+      window.alert(
+        message,
+      );
+    } finally {
+      setIsSubmitting(
+        false,
+      );
     }
-
-    const invoiceNo =
-      generateInvoiceNo();
-
-    const customer =
-      customerName.trim() ||
-      "Walk-in Customer";
-
-    const mobile =
-      mobileNumber.trim() ||
-      "-";
-
-    const method =
-      paymentStatus ===
-      "due"
-        ? "-"
-        : paymentMethod;
-
-    /* STOCK DEDUCTION */
-
-    setMedicines(
-      (current) =>
-        current.map(
-          (medicine) => {
-            const items =
-              cart.filter(
-                (item) =>
-                  item.medicineId ===
-                  medicine.id,
-              );
-
-            if (
-              items.length === 0
-            ) {
-              return medicine;
-            }
-
-            const requiredBase =
-              items.reduce(
-                (sum, item) =>
-                  sum +
-                  item.quantity *
-                    item.conversionToBase,
-                0,
-              );
-
-            return deductStockFEFO(
-              medicine,
-              requiredBase,
-            );
-          },
-        ),
-    );
-
-    const invoice:
-      GeneratedInvoice = {
-      invoice:
-        invoiceNo,
-
-      customer,
-      mobile,
-
-      date:
-        getDisplayDate(),
-
-      items:
-        cart.map(
-          (item) => ({
-            ...item,
-          }),
-        ),
-
-      subtotal,
-
-      discountPercent:
-        safeDiscount,
-
-      discountAmount,
-
-      vatEnabled:
-        settings.vatEnabled,
-
-      vatRatePercent:
-        settings.vatRatePercent,
-
-      vatAmount,
-
-      total,
-
-      paymentMethod:
-        method,
-
-      paymentStatus,
-
-      paidAmount,
-
-      dueAmount,
-    };
-
-    setGeneratedInvoice(
-      invoice,
-    );
-
-    setRecentSales(
-      (current) => [
-        {
-          invoice:
-            invoiceNo,
-
-          customer,
-          mobile,
-
-          date:
-            getDisplayDate(),
-
-          items:
-            cart.reduce(
-              (sum, item) =>
-                sum +
-                item.quantity,
-              0,
-            ),
-
-          amount:
-            total,
-
-          method,
-
-          status:
-            paymentStatus,
-        },
-
-        ...current,
-      ],
-    );
-
-    setCart([]);
-
-    setCustomerName("");
-
-    setMobileNumber("");
-
-    setPaymentStatus(
-      "paid",
-    );
-
-    setPaymentMethod(
-      "Cash",
-    );
-
-    setPartialPaidAmount("");
-
-    setDiscountPercent(
-      "0",
-    );
   }
+
+  /* =======================================================
+     STATUS STYLE
+  ======================================================= */
 
   function statusClass(
     status: PaymentStatus,
   ) {
     if (
-      status === "paid"
+      status ===
+      "paid"
     ) {
       return "bg-emerald-100 text-emerald-700";
     }
@@ -1819,11 +1697,31 @@ export default function SalesPage() {
     <>
       <div className="mx-auto grid w-full max-w-[1600px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(390px,1fr)]">
 
-        {/* LEFT */}
+        {/* =================================================
+            LEFT SIDE
+        ================================================= */}
 
         <div className="min-w-0 space-y-4">
 
-          {/* SEARCH + CATEGORY */}
+          {/* ERROR */}
+
+          {errorMessage ? (
+
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+
+              <p className="text-[10px] text-rose-700">
+                {
+                  errorMessage
+                }
+              </p>
+
+            </div>
+
+          ) : null}
+
+          {/* ===============================================
+              SEARCH + CATEGORY
+          =============================================== */}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
 
@@ -1834,6 +1732,7 @@ export default function SalesPage() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                 <input
+                  type="text"
                   value={
                     searchTerm
                   }
@@ -1846,7 +1745,7 @@ export default function SalesPage() {
                     )
                   }
                   placeholder="Search medicine or generic name..."
-                  className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-[11px] outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-[11px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                 />
 
               </div>
@@ -1877,10 +1776,12 @@ export default function SalesPage() {
                         category
                       }
                     >
+
                       {category ===
                       "All"
                         ? "All Categories"
                         : category}
+
                     </option>
 
                   ),
@@ -1892,14 +1793,11 @@ export default function SalesPage() {
 
           </section>
 
-          {/* COMPACT MEDICINE TABLE */}
+          {/* ===============================================
+              MEDICINE TABLE
+          =============================================== */}
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-            {/*
-              No min-width.
-              No horizontal scroll.
-            */}
 
             <table className="w-full table-fixed">
 
@@ -1937,343 +1835,421 @@ export default function SalesPage() {
 
               <tbody>
 
-                {filteredMedicines.map(
-                  (medicine) => {
-                    const validStock =
-                      getValidStockBase(
+                {isLoading ? (
+
+                  <tr>
+
+                    <td
+                      colSpan={
+                        6
+                      }
+                      className="px-5 py-16 text-center"
+                    >
+
+                      <Loader2 className="mx-auto h-6 w-6 animate-spin text-sky-600" />
+
+                      <p className="mt-3 text-[11px] font-medium text-slate-600">
+                        Loading medicines...
+                      </p>
+
+                    </td>
+
+                  </tr>
+
+                ) : (
+
+                  <>
+                    {filteredMedicines.map(
+                      (
                         medicine,
-                      );
+                      ) => {
+                        const validStock =
+                          getValidStockBase(
+                            medicine,
+                          );
 
-                    const expired =
-                      getExpiredStockBase(
-                        medicine,
-                      );
+                        const expiredStock =
+                          getExpiredStockBase(
+                            medicine,
+                          );
 
-                    const remaining =
-                      getRemainingBase(
-                        medicine,
-                      );
+                        const remaining =
+                          getRemainingBase(
+                            medicine,
+                          );
 
-                    const draft =
-                      drafts[
-                        medicine.id
-                      ];
+                        const draft =
+                          drafts[
+                            medicine.id
+                          ];
 
-                    const unit =
-                      medicine.units.find(
-                        (unit) =>
-                          unit.unitName ===
+                        const selectedUnit =
+                          medicine.units.find(
+                            (unit) =>
+                              unit.unitName ===
+                                draft
+                                  ?.unitName &&
+                              unit.sellable,
+                          );
+
+                        const quantity =
+                          Number(
                             draft
-                              ?.unitName &&
-                          unit.sellable,
-                      );
+                              ?.quantity,
+                          ) || 0;
 
-                    const quantity =
-                      Number(
-                        draft
-                          ?.quantity,
-                      ) || 0;
-
-                    const maxQuantity =
-                      unit
-                        ? Math.floor(
-                            remaining /
-                              unit.conversionToBase,
-                          )
-                        : 0;
-
-                    const price =
-                      unit
-                        ? unit.price *
-                          quantity
-                        : 0;
-
-                    return (
-
-                      <tr
-                        key={
-                          medicine.id
-                        }
-                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
-                      >
-
-                        {/* MEDICINE + GENERIC + CATEGORY */}
-
-                        <td className="px-4 py-4 align-middle">
-
-                          <p className="truncate text-[12px] font-semibold text-slate-900">
-                            {
-                              medicine.name
-                            }
-                          </p>
-
-                          <p className="mt-0.5 truncate text-[9px] text-slate-500">
-                            {
-                              medicine.genericName
-                            }
-                          </p>
-
-                          <div className="mt-1.5 flex items-center gap-2">
-
-                            <span className="inline-flex max-w-full truncate rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[8px] font-medium text-sky-700">
-                              {
-                                medicine.category
-                              }
-                            </span>
-
-                          </div>
-
-                        </td>
-
-                        {/* STOCK */}
-
-                        <td className="px-3 py-4 align-middle">
-
-                          <p
-                            className={`text-[10px] font-semibold ${
-                              remaining >
-                              0
-                                ? "text-slate-800"
-                                : "text-rose-600"
-                            }`}
-                          >
-                            {remaining.toLocaleString(
-                              "en-US",
-                            )}
-                          </p>
-
-                          <p className="mt-0.5 text-[8px] text-slate-400">
-                            {
-                              medicine.baseUnit
-                            }
-                          </p>
-
-                          {validStock !==
-                          remaining ? (
-
-                            <p className="mt-1 text-[7px] text-sky-600">
-                              {(
-                                validStock -
-                                remaining
-                              ).toLocaleString(
-                                "en-US",
-                              )}{" "}
-                              reserved
-                            </p>
-
-                          ) : null}
-
-                          {expired >
-                          0 ? (
-
-                            <p className="mt-1 text-[7px] text-rose-500">
-                              {expired.toLocaleString(
-                                "en-US",
-                              )}{" "}
-                              expired
-                            </p>
-
-                          ) : null}
-
-                        </td>
-
-                        {/* UNIT */}
-
-                        <td className="px-3 py-4 align-middle">
-
-                          <select
-                            value={
-                              draft
-                                ?.unitName ??
-                              ""
-                            }
-                            disabled={
-                              remaining <=
-                              0
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateUnit(
-                                medicine.id,
-
-                                event.target
-                                  .value,
+                        const maxQuantity =
+                          selectedUnit
+                            ? Math.floor(
+                                remaining /
+                                  selectedUnit.conversionToBase,
                               )
+                            : 0;
+
+                        const price =
+                          selectedUnit
+                            ? selectedUnit.price *
+                              quantity
+                            : 0;
+
+                        return (
+
+                          <tr
+                            key={
+                              medicine.id
                             }
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[9px] text-slate-700 outline-none focus:border-sky-400"
+                            className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50"
                           >
 
-                            {getSellableUnits(
-                              medicine,
-                            ).map(
-                              (
-                                sellUnit,
-                              ) => {
+                            {/* MEDICINE */}
 
-                                const available =
-                                  Math.floor(
-                                    remaining /
-                                      sellUnit.conversionToBase,
-                                  );
+                            <td className="px-4 py-4 align-middle">
 
-                                return (
+                              <p className="truncate text-[11px] font-semibold text-slate-900">
+                                {
+                                  medicine.name
+                                }
+                              </p>
 
-                                  <option
-                                    key={
-                                      sellUnit.unitName
-                                    }
-                                    value={
-                                      sellUnit.unitName
-                                    }
-                                  >
-                                    {
-                                      sellUnit.unitName
-                                    }{" "}
-                                    ({available})
-                                  </option>
+                              <p className="mt-1 truncate text-[8px] text-slate-500">
+                                {
+                                  medicine.genericName
+                                }
+                              </p>
 
-                                );
-                              },
-                            )}
+                              <span className="mt-1.5 inline-flex max-w-full rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[7px] font-medium text-sky-700">
 
-                          </select>
+                                <span className="truncate">
+                                  {
+                                    medicine.category
+                                  }
+                                </span>
 
-                        </td>
+                              </span>
 
-                        {/* QTY */}
+                            </td>
 
-                        <td className="px-2 py-4 align-middle">
+                            {/* STOCK */}
 
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={
-                              draft
-                                ?.quantity ??
-                              "1"
-                            }
-                            disabled={
-                              remaining <=
-                              0
-                            }
-                            onChange={(
-                              event,
-                            ) =>
-                              updateQuantity(
-                                medicine.id,
+                            <td className="px-3 py-4 align-middle">
 
-                                event.target
-                                  .value,
-                              )
-                            }
-                            className="h-9 w-full rounded-lg border border-slate-200 px-1 text-center text-[10px] font-medium outline-none focus:border-sky-400"
-                          />
+                              <p
+                                className={`text-[10px] font-semibold ${
+                                  remaining >
+                                  0
+                                    ? "text-slate-800"
+                                    : "text-rose-600"
+                                }`}
+                              >
 
-                          {unit ? (
+                                {remaining.toLocaleString(
+                                  "en-US",
+                                )}
 
-                            <p className="mt-1 text-center text-[7px] text-slate-400">
-                              Max{" "}
-                              {
-                                maxQuantity
-                              }
-                            </p>
+                              </p>
 
-                          ) : null}
+                              <p className="mt-0.5 text-[8px] text-slate-400">
+                                {
+                                  medicine.baseUnit
+                                }
+                              </p>
 
-                        </td>
+                              {validStock !==
+                              remaining ? (
 
-                        {/* PRICE */}
+                                <p className="mt-1 text-[7px] text-sky-600">
 
-                        <td className="px-3 py-4 align-middle">
+                                  {(
+                                    validStock -
+                                    remaining
+                                  ).toLocaleString(
+                                    "en-US",
+                                  )}{" "}
 
-                          <p className="text-[10px] font-semibold text-emerald-700">
-                            ৳
-                            {formatMoney(
-                              price,
-                            )}
+                                  reserved
+
+                                </p>
+
+                              ) : null}
+
+                              {expiredStock >
+                              0 ? (
+
+                                <p className="mt-1 text-[7px] text-rose-500">
+
+                                  {expiredStock.toLocaleString(
+                                    "en-US",
+                                  )}{" "}
+
+                                  expired
+
+                                </p>
+
+                              ) : null}
+
+                            </td>
+
+                            {/* UNIT */}
+
+                            <td className="px-3 py-4 align-middle">
+
+                              <select
+                                value={
+                                  draft
+                                    ?.unitName ??
+                                  ""
+                                }
+                                disabled={
+                                  remaining <=
+                                    0 ||
+                                  isSubmitting
+                                }
+                                onChange={(
+                                  event,
+                                ) =>
+                                  updateUnit(
+                                    medicine.id,
+
+                                    event.target
+                                      .value,
+                                  )
+                                }
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[9px] text-slate-700 outline-none focus:border-sky-400 disabled:bg-slate-50"
+                              >
+
+                                {getSellableUnits(
+                                  medicine,
+                                ).map(
+                                  (
+                                    sellUnit,
+                                  ) => {
+                                    const available =
+                                      Math.floor(
+                                        remaining /
+                                          sellUnit.conversionToBase,
+                                      );
+
+                                    return (
+
+                                      <option
+                                        key={
+                                          sellUnit.id
+                                        }
+                                        value={
+                                          sellUnit.unitName
+                                        }
+                                      >
+
+                                        {
+                                          sellUnit.unitName
+                                        }{" "}
+
+                                        (
+                                        {
+                                          available
+                                        }
+                                        )
+
+                                      </option>
+
+                                    );
+                                  },
+                                )}
+
+                              </select>
+
+                            </td>
+
+                            {/* QTY */}
+
+                            <td className="px-2 py-4 text-center align-middle">
+
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={
+                                  draft
+                                    ?.quantity ??
+                                  "1"
+                                }
+                                disabled={
+                                  remaining <=
+                                    0 ||
+                                  isSubmitting
+                                }
+                                onChange={(
+                                  event,
+                                ) =>
+                                  updateQuantity(
+                                    medicine.id,
+
+                                    event.target
+                                      .value,
+                                  )
+                                }
+                                className="h-9 w-full rounded-lg border border-slate-200 px-1 text-center text-[10px] font-medium outline-none focus:border-sky-400 disabled:bg-slate-50"
+                              />
+
+                              {selectedUnit ? (
+
+                                <p className="mt-1 text-center text-[7px] text-slate-400">
+                                  Max{" "}
+                                  {
+                                    maxQuantity
+                                  }
+                                </p>
+
+                              ) : null}
+
+                            </td>
+
+                            {/* PRICE */}
+
+                            <td className="px-3 py-4 align-middle">
+
+                              <p
+                                className={`text-[10px] font-semibold ${
+                                  selectedUnit &&
+                                  selectedUnit.price >
+                                    0
+                                    ? "text-emerald-700"
+                                    : "text-rose-500"
+                                }`}
+                              >
+
+                                ৳
+                                {formatMoney(
+                                  price,
+                                )}
+
+                              </p>
+
+                              {selectedUnit ? (
+
+                                <p className="mt-1 text-[7px] text-slate-400">
+
+                                  {selectedUnit.price >
+                                  0 ? (
+                                    <>
+                                      ৳
+                                      {formatMoney(
+                                        selectedUnit.price,
+                                      )}
+                                      /
+                                      {
+                                        selectedUnit.unitName
+                                      }
+                                    </>
+                                  ) : (
+                                    "Price unavailable"
+                                  )}
+
+                                </p>
+
+                              ) : null}
+
+                            </td>
+
+                            {/* ACTION */}
+
+                            <td className="px-2 py-4 text-center align-middle">
+
+                              <button
+                                type="button"
+                                disabled={
+                                  isSubmitting ||
+                                  remaining <=
+                                    0 ||
+                                  !selectedUnit ||
+                                  selectedUnit.price <=
+                                    0 ||
+                                  quantity <=
+                                    0 ||
+                                  quantity >
+                                    maxQuantity
+                                }
+                                onClick={() =>
+                                  addToCart(
+                                    medicine,
+                                  )
+                                }
+                                className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-sky-600 px-3 text-[9px] font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                              >
+
+                                <Plus className="h-3 w-3" />
+
+                                Add
+
+                              </button>
+
+                            </td>
+
+                          </tr>
+
+                        );
+                      },
+                    )}
+
+                    {filteredMedicines.length ===
+                    0 ? (
+
+                      <tr>
+
+                        <td
+                          colSpan={
+                            6
+                          }
+                          className="px-5 py-14 text-center"
+                        >
+
+                          <p className="text-[11px] font-medium text-slate-600">
+                            No medicines found
                           </p>
-
-                          {unit ? (
-
-                            <p className="mt-1 text-[7px] text-slate-400">
-                              ৳
-                              {formatMoney(
-                                unit.price,
-                              )}
-                              /
-                              {
-                                unit.unitName
-                              }
-                            </p>
-
-                          ) : null}
-
-                        </td>
-
-                        {/* ACTION */}
-
-                        <td className="px-2 py-4 text-center align-middle">
-
-                          <button
-                            type="button"
-                            disabled={
-                              remaining <=
-                                0 ||
-                              !unit ||
-                              quantity <=
-                                0 ||
-                              quantity >
-                                maxQuantity
-                            }
-                            onClick={() =>
-                              addToCart(
-                                medicine,
-                              )
-                            }
-                            className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-sky-600 px-3 text-[9px] font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                          >
-                            <Plus className="h-3 w-3" />
-
-                            Add
-                          </button>
 
                         </td>
 
                       </tr>
 
-                    );
-                  },
+                    ) : null}
+                  </>
+
                 )}
 
               </tbody>
 
             </table>
 
-            {filteredMedicines.length ===
-            0 ? (
-
-              <div className="py-14 text-center">
-
-                <Search className="mx-auto h-6 w-6 text-slate-300" />
-
-                <p className="mt-2 text-[12px] font-medium text-slate-600">
-                  No medicines found
-                </p>
-
-              </div>
-
-            ) : null}
-
           </section>
 
-          {/* RECENT SALES */}
+          {/* ===============================================
+              RECENT SALES
+          =============================================== */}
 
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
             <div className="border-b border-slate-200 px-4 py-4">
 
-              <h2 className="text-[13px] font-semibold text-slate-900">
+              <h2 className="text-[12px] font-semibold text-slate-900">
                 Recent Sales
               </h2>
 
@@ -2281,11 +2257,11 @@ export default function SalesPage() {
 
             <div className="overflow-x-auto">
 
-              <table className="w-full min-w-[700px]">
+              <table className="w-full min-w-[720px]">
 
                 <thead>
 
-                  <tr className="border-b border-slate-200 bg-slate-50">
+                  <tr className="border-b border-slate-200 bg-slate-50/70">
 
                     <TableHead>
                       Invoice
@@ -2359,20 +2335,22 @@ export default function SalesPage() {
                           }
                         </td>
 
-                        <td className="px-3 py-3 text-[9px]">
+                        <td className="px-3 py-3 text-[9px] text-slate-600">
                           {
                             sale.items
                           }
                         </td>
 
-                        <td className="px-3 py-3 text-[10px] font-semibold text-emerald-700">
+                        <td className="px-3 py-3 text-[9px] font-semibold text-emerald-700">
+
                           ৳
                           {formatMoney(
                             sale.amount,
                           )}
+
                         </td>
 
-                        <td className="px-3 py-3 text-[9px]">
+                        <td className="px-3 py-3 text-[9px] text-slate-600">
                           {
                             sale.method
                           }
@@ -2396,6 +2374,24 @@ export default function SalesPage() {
 
                     ),
                   )}
+
+                  {recentSales.length ===
+                  0 ? (
+
+                    <tr>
+
+                      <td
+                        colSpan={
+                          8
+                        }
+                        className="px-5 py-12 text-center text-[10px] text-slate-400"
+                      >
+                        No sales yet
+                      </td>
+
+                    </tr>
+
+                  ) : null}
 
                 </tbody>
 
@@ -2427,17 +2423,22 @@ export default function SalesPage() {
 
             <div className="space-y-4 p-5">
 
-              {/* CUSTOMER */}
+              {/* ===========================================
+                  CUSTOMER NAME
+              =========================================== */}
 
               <div>
 
-                <label className="mb-2 block text-[10px] font-medium text-slate-700">
+                <FieldLabel>
                   Customer Name
-                </label>
+                </FieldLabel>
 
                 <input
                   value={
                     customerName
+                  }
+                  disabled={
+                    isSubmitting
                   }
                   onChange={(
                     event,
@@ -2448,21 +2449,30 @@ export default function SalesPage() {
                     )
                   }
                   placeholder="Customer name (optional)"
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none"
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none focus:border-sky-400 disabled:bg-slate-50"
                 />
 
               </div>
 
+              {/* ===========================================
+                  MOBILE
+              =========================================== */}
+
               <div>
 
-                <label className="mb-2 block text-[10px] font-medium text-slate-700">
+                <FieldLabel>
                   Mobile Number
-                </label>
+                </FieldLabel>
 
                 <input
-                  maxLength={11}
+                  maxLength={
+                    11
+                  }
                   value={
                     mobileNumber
+                  }
+                  disabled={
+                    isSubmitting
                   }
                   onChange={(
                     event,
@@ -2475,35 +2485,37 @@ export default function SalesPage() {
                     )
                   }
                   placeholder="017XXXXXXXX"
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none"
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none focus:border-sky-400 disabled:bg-slate-50"
                 />
 
               </div>
 
-              {/* CART */}
+              {/* ===========================================
+                  CART ITEMS
+              =========================================== */}
 
-              <div className="space-y-2">
+              {cart.length ===
+              0 ? (
 
-                {cart.length ===
-                0 ? (
+                <div className="flex min-h-[170px] flex-col items-center justify-center text-center">
 
-                  <div className="py-10 text-center">
+                  <ShoppingCart className="h-7 w-7 text-slate-300" />
 
-                    <ShoppingCart className="mx-auto h-6 w-6 text-slate-300" />
+                  <p className="mt-3 text-[10px] font-medium text-slate-500">
+                    No items in cart.
+                  </p>
 
-                    <p className="mt-2 text-[10px] text-slate-500">
-                      No items in cart.
-                    </p>
+                  <p className="mt-1 text-[9px] text-slate-400">
+                    Select unit, quantity and add medicine.
+                  </p>
 
-                    <p className="text-[9px] text-slate-400">
-                      Select unit, quantity and add medicine.
-                    </p>
+                </div>
 
-                  </div>
+              ) : (
 
-                ) : (
+                <div className="space-y-2">
 
-                  cart.map(
+                  {cart.map(
                     (item) => (
 
                       <div
@@ -2524,55 +2536,72 @@ export default function SalesPage() {
                             </p>
 
                             <p className="mt-1 text-[9px] font-semibold text-sky-700">
+
                               {
                                 item.quantity
                               }{" "}
+
                               {
                                 item.unitName
                               }
+
                             </p>
 
                             <p className="mt-1 text-[8px] text-slate-500">
+
                               ৳
                               {formatMoney(
                                 item.unitPrice,
                               )}{" "}
+
                               ×{" "}
+
                               {
                                 item.quantity
                               }{" "}
+
                               = ৳
                               {formatMoney(
                                 item.unitPrice *
                                   item.quantity,
                               )}
+
                             </p>
 
                             <p className="mt-1 text-[7px] text-slate-400">
+
                               Deduct{" "}
+
                               {(
                                 item.quantity *
                                 item.conversionToBase
                               ).toLocaleString(
                                 "en-US",
                               )}{" "}
+
                               {
                                 item.baseUnit
                               }
+
                             </p>
 
                           </div>
 
                           <button
                             type="button"
+                            disabled={
+                              isSubmitting
+                            }
                             onClick={() =>
                               removeCartItem(
                                 item.id,
                               )
                             }
-                            className="h-7 w-7 text-rose-500"
+                            className="h-7 w-7 text-rose-500 disabled:opacity-40"
                           >
+
                             <X className="h-3.5 w-3.5" />
+
                           </button>
 
                         </div>
@@ -2582,8 +2611,9 @@ export default function SalesPage() {
                           <button
                             type="button"
                             disabled={
+                              isSubmitting ||
                               item.quantity <=
-                              1
+                                1
                             }
                             onClick={() =>
                               decreaseCartItem(
@@ -2592,7 +2622,9 @@ export default function SalesPage() {
                             }
                             className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 disabled:opacity-40"
                           >
+
                             <Minus className="h-3 w-3" />
+
                           </button>
 
                           <span className="min-w-[25px] text-center text-[10px] font-semibold">
@@ -2603,14 +2635,19 @@ export default function SalesPage() {
 
                           <button
                             type="button"
+                            disabled={
+                              isSubmitting
+                            }
                             onClick={() =>
                               increaseCartItem(
                                 item,
                               )
                             }
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100"
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 disabled:opacity-40"
                           >
+
                             <Plus className="h-3 w-3" />
+
                           </button>
 
                         </div>
@@ -2618,59 +2655,77 @@ export default function SalesPage() {
                       </div>
 
                     ),
-                  )
+                  )}
 
-                )}
+                </div>
+
+              )}
+
+              {/* ===========================================
+                  PAYMENT STATUS
+              =========================================== */}
+
+              <div>
+
+                <FieldLabel>
+                  Payment Status
+                </FieldLabel>
+
+                <select
+                  value={
+                    paymentStatus
+                  }
+                  disabled={
+                    isSubmitting
+                  }
+                  onChange={(
+                    event,
+                  ) => {
+                    const value =
+                      event.target
+                        .value as PaymentStatus;
+
+                    setPaymentStatus(
+                      value,
+                    );
+
+                    if (
+                      value !==
+                      "partial"
+                    ) {
+                      setPartialPaidAmount(
+                        "",
+                      );
+                    }
+                  }}
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[10px] text-slate-700 outline-none focus:border-sky-400 disabled:bg-slate-50"
+                >
+
+                  <option value="paid">
+                    Paid
+                  </option>
+
+                  <option value="partial">
+                    Partial
+                  </option>
+
+                  <option value="due">
+                    Due
+                  </option>
+
+                </select>
 
               </div>
 
-            </div>
-
-            {/* PAYMENT */}
-
-            <div className="space-y-4 border-t border-slate-200 p-5">
-
-              <FieldLabel>
-                Payment Status
-              </FieldLabel>
-
-              <select
-                value={
-                  paymentStatus
-                }
-                onChange={(
-                  event,
-                ) => {
-                  setPaymentStatus(
-                    event.target
-                      .value as PaymentStatus,
-                  );
-
-                  setPartialPaidAmount(
-                    "",
-                  );
-                }}
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px]"
-              >
-
-                <option value="paid">
-                  Paid
-                </option>
-
-                <option value="partial">
-                  Partial
-                </option>
-
-                <option value="due">
-                  Due
-                </option>
-
-              </select>
+              {/* ===========================================
+                  PAYMENT METHOD
+              =========================================== */}
 
               {paymentStatus !==
               "due" ? (
 
-                <>
+                <div>
+
                   <FieldLabel>
                     Payment Method
                   </FieldLabel>
@@ -2678,6 +2733,9 @@ export default function SalesPage() {
                   <select
                     value={
                       paymentMethod
+                    }
+                    disabled={
+                      isSubmitting
                     }
                     onChange={(
                       event,
@@ -2687,46 +2745,57 @@ export default function SalesPage() {
                           .value as PaymentMethod,
                       )
                     }
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px]"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[10px] text-slate-700 outline-none focus:border-sky-400 disabled:bg-slate-50"
                   >
 
-                    <option>
+                    <option value="Cash">
                       Cash
                     </option>
 
-                    <option>
+                    <option value="bKash">
                       bKash
                     </option>
 
-                    <option>
+                    <option value="Nagad">
                       Nagad
                     </option>
 
-                    <option>
+                    <option value="Card">
                       Card
                     </option>
 
-                    <option>
+                    <option value="Rocket">
                       Rocket
                     </option>
 
                   </select>
-                </>
+
+                </div>
 
               ) : null}
+
+              {/* ===========================================
+                  PARTIAL PAYMENT
+              =========================================== */}
 
               {paymentStatus ===
               "partial" ? (
 
-                <>
+                <div>
+
                   <FieldLabel>
                     Paid Amount
                   </FieldLabel>
 
                   <input
                     type="number"
+                    min="0"
+                    step="0.01"
                     value={
                       partialPaidAmount
+                    }
+                    disabled={
+                      isSubmitting
                     }
                     onChange={(
                       event,
@@ -2736,35 +2805,51 @@ export default function SalesPage() {
                           .value,
                       )
                     }
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px]"
+                    placeholder="Enter paid amount"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none focus:border-sky-400 disabled:bg-slate-50"
                   />
-                </>
+
+                </div>
 
               ) : null}
 
-              <FieldLabel>
-                Discount (%)
-              </FieldLabel>
+              {/* ===========================================
+                  DISCOUNT
+              =========================================== */}
 
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={
-                  discountPercent
-                }
-                onChange={(
-                  event,
-                ) =>
-                  setDiscountPercent(
-                    event.target
-                      .value,
-                  )
-                }
-                className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px]"
-              />
+              <div>
 
-              {/* BILL */}
+                <FieldLabel>
+                  Discount (%)
+                </FieldLabel>
+
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={
+                    discountPercent
+                  }
+                  disabled={
+                    isSubmitting
+                  }
+                  onChange={(
+                    event,
+                  ) =>
+                    setDiscountPercent(
+                      event.target
+                        .value,
+                    )
+                  }
+                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none focus:border-sky-400 disabled:bg-slate-50"
+                />
+
+              </div>
+
+              {/* ===========================================
+                  BILL
+              =========================================== */}
 
               <div className="rounded-xl bg-slate-50 p-4">
 
@@ -2819,10 +2904,12 @@ export default function SalesPage() {
                   </span>
 
                   <span className="text-[18px] font-bold text-sky-700">
+
                     ৳
                     {formatMoney(
                       total,
                     )}
+
                   </span>
 
                 </div>
@@ -2862,17 +2949,37 @@ export default function SalesPage() {
 
               </div>
 
+              {/* ===========================================
+                  GENERATE
+              =========================================== */}
+
               <button
+                type="button"
                 disabled={
                   cart.length ===
-                  0
+                    0 ||
+                  isSubmitting
                 }
-                onClick={
-                  generateInvoice
+                onClick={() =>
+                  void generateInvoice()
                 }
-                className="h-11 w-full rounded-xl bg-sky-600 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:bg-sky-300"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-sky-600 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-sky-300"
               >
-                Generate Invoice
+
+                {isSubmitting ? (
+
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+
+                    Processing Sale...
+                  </>
+
+                ) : (
+
+                  "Generate Invoice"
+
+                )}
+
               </button>
 
             </div>
@@ -2893,6 +3000,8 @@ export default function SalesPage() {
 
           <div className="max-h-[92vh] w-full max-w-[700px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
 
+            {/* HEADER */}
+
             <div className="flex justify-between border-b border-slate-200 px-5 py-4">
 
               <div>
@@ -2910,46 +3019,28 @@ export default function SalesPage() {
               </div>
 
               <button
+                type="button"
                 onClick={() =>
                   setGeneratedInvoice(
                     null,
                   )
                 }
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
               >
-                <X className="h-5 w-5 text-slate-500" />
+
+                <X className="h-5 w-5" />
+
               </button>
 
             </div>
 
+            {/* BODY */}
+
             <div className="space-y-5 p-5">
 
-              <div className="text-center">
+              {/* CUSTOMER INFO */}
 
-                <h2 className="text-xl font-bold">
-                  Green Life Pharmacy
-                </h2>
-
-                <p className="text-[9px] text-slate-500">
-                  Pharmacy Management System
-                </p>
-
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-
-                <InvoiceInfo
-                  label="Invoice"
-                  value={
-                    generatedInvoice.invoice
-                  }
-                />
-
-                <InvoiceInfo
-                  label="Date"
-                  value={
-                    generatedInvoice.date
-                  }
-                />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 
                 <InvoiceInfo
                   label="Customer"
@@ -2966,28 +3057,30 @@ export default function SalesPage() {
                 />
 
                 <InvoiceInfo
+                  label="Date"
+                  value={
+                    generatedInvoice.date
+                  }
+                />
+
+                <InvoiceInfo
                   label="Payment"
                   value={
                     generatedInvoice.paymentMethod
                   }
                 />
 
-                <InvoiceInfo
-                  label="Status"
-                  value={
-                    generatedInvoice.paymentStatus.toUpperCase()
-                  }
-                />
-
               </div>
+
+              {/* ITEMS */}
 
               <div className="overflow-hidden rounded-xl border border-slate-200">
 
                 <table className="w-full">
 
-                  <thead className="bg-slate-50">
+                  <thead>
 
-                    <tr>
+                    <tr className="bg-slate-50">
 
                       <TableHead>
                         Medicine
@@ -3012,12 +3105,13 @@ export default function SalesPage() {
                   <tbody>
 
                     {generatedInvoice.items.map(
-                      (item) => (
+                      (
+                        item,
+                        index,
+                      ) => (
 
                         <tr
-                          key={
-                            item.id
-                          }
+                          key={`${item.id}-${index}`}
                           className="border-t border-slate-100"
                         >
 
@@ -3028,27 +3122,34 @@ export default function SalesPage() {
                           </td>
 
                           <td className="px-3 py-3 text-[9px]">
+
                             {
                               item.quantity
                             }{" "}
+
                             {
                               item.unitName
                             }
+
                           </td>
 
                           <td className="px-3 py-3 text-[9px]">
+
                             ৳
                             {formatMoney(
                               item.unitPrice,
                             )}
+
                           </td>
 
                           <td className="px-3 py-3 text-[9px] font-semibold">
+
                             ৳
                             {formatMoney(
                               item.unitPrice *
                                 item.quantity,
                             )}
+
                           </td>
 
                         </tr>
@@ -3061,6 +3162,8 @@ export default function SalesPage() {
                 </table>
 
               </div>
+
+              {/* TOTAL */}
 
               <div className="ml-auto max-w-[320px] rounded-xl bg-slate-50 p-4">
 
@@ -3101,10 +3204,12 @@ export default function SalesPage() {
                   </span>
 
                   <span className="text-lg font-bold text-sky-700">
+
                     ৳
                     {formatMoney(
                       generatedInvoice.total,
                     )}
+
                   </span>
 
                 </div>
@@ -3116,24 +3221,36 @@ export default function SalesPage() {
                   }
                 />
 
-                <BillLine
-                  label="Due"
-                  value={
-                    generatedInvoice.dueAmount
-                  }
-                />
+                {generatedInvoice.dueAmount >
+                0 ? (
+
+                  <BillLine
+                    label="Due"
+                    value={
+                      generatedInvoice.dueAmount
+                    }
+                  />
+
+                ) : null}
 
               </div>
 
+            </div>
+
+            {/* FOOTER */}
+
+            <div className="flex justify-end border-t border-slate-200 px-5 py-4">
+
               <button
+                type="button"
                 onClick={() =>
                   setGeneratedInvoice(
                     null,
                   )
                 }
-                className="h-10 w-full rounded-xl bg-sky-600 text-[10px] font-semibold text-white"
+                className="h-10 rounded-xl bg-sky-600 px-5 text-[10px] font-semibold text-white hover:bg-sky-700"
               >
-                Close Invoice
+                Done
               </button>
 
             </div>
@@ -3155,7 +3272,7 @@ function TableHead({
   children,
 }: {
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
     <th className="px-3 py-3 text-left text-[9px] font-medium text-slate-500">
@@ -3168,10 +3285,10 @@ function FieldLabel({
   children,
 }: {
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
-    <label className="block text-[10px] font-medium text-slate-700">
+    <label className="mb-2 block text-[10px] font-medium text-slate-700">
       {children}
     </label>
   );
@@ -3182,12 +3299,13 @@ function BillLine({
   value,
 }: {
   label: string;
+
   value: number;
 }) {
   return (
-    <div className="mt-2 flex justify-between text-[9px]">
+    <div className="mt-2 flex items-center justify-between text-[9px] text-slate-500">
 
-      <span className="text-slate-500">
+      <span>
         {label}
       </span>
 
@@ -3195,16 +3313,22 @@ function BillLine({
         className={
           value < 0
             ? "text-rose-500"
-            : "text-slate-700"
+            : ""
         }
       >
-        {value < 0
-          ? "-"
+
+        {value <
+        0
+          ? "- "
           : ""}
+
         ৳
         {formatMoney(
-          Math.abs(value),
+          Math.abs(
+            value,
+          ),
         )}
+
       </span>
 
     </div>
@@ -3216,6 +3340,7 @@ function InvoiceInfo({
   value,
 }: {
   label: string;
+
   value: string;
 }) {
   return (

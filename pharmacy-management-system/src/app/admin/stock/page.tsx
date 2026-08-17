@@ -3,6 +3,7 @@
 import {
   FormEvent,
   ReactNode,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -12,6 +13,7 @@ import {
   ArrowDown,
   ArrowUp,
   Boxes,
+  Loader2,
   Package,
   Pencil,
   Search,
@@ -22,39 +24,42 @@ import {
    TYPES
 ========================================================= */
 
+type BatchStatus =
+  | "ACTIVE"
+  | "DEPLETED"
+  | "EXPIRED"
+  | "BLOCKED";
+
 type StockBatch = {
   id: string;
+
   batchNo: string;
+
   expiryDate: string;
 
-  /*
-   * IMPORTANT:
-   *
-   * Every batch quantity is stored
-   * in the medicine's BASE UNIT.
-   *
-   * Examples:
-   * Tablet
-   * Capsule
-   * Bottle
-   */
   stockBaseQuantity: number;
+
+  status: BatchStatus;
 };
 
 type StockMedicine = {
   id: string;
 
+  databaseId?: number;
+
   medicineName: string;
+
   genericName: string;
+
   category: string;
 
   baseUnit: string;
 
-  /*
-   * Reorder level is also always
-   * stored in BASE UNIT.
-   */
   reorderLevelBase: number;
+
+  reorderMode?:
+    | "MANUAL"
+    | "AUTO";
 
   batches: StockBatch[];
 };
@@ -83,495 +88,22 @@ type AdjustmentForm = {
   reason: string;
 };
 
-/* =========================================================
-   DEMO STOCK DATA
-========================================================= */
+type StockApiResponse = {
+  success: boolean;
 
-/*
- * This structure matches the database direction:
- *
- * Medicine
- *    ↓
- * Medicine Units
- *    ↓
- * Medicine Batches
- *
- * Stock is NOT stored as:
- *
- * 20 Box
- * 15 Strip
- *
- * Internally everything is base quantity.
- */
+  message?: string;
 
-const initialStockItems: StockMedicine[] = [
-  {
-    id: "MED-001",
+  data?: StockMedicine[];
+};
 
-    medicineName: "Napa 500mg",
-    genericName: "Paracetamol",
-    category: "Pain Relief",
+type MutationApiResponse = {
+  success: boolean;
 
-    baseUnit: "Tablet",
-
-    reorderLevelBase: 500,
-
-    batches: [
-      {
-        id: "BAT-NAPA-OLD",
-
-        batchNo: "NPA-2501",
-
-        expiryDate:
-          "2026-06-30",
-
-        stockBaseQuantity:
-          100,
-      },
-
-      {
-        id: "BAT-NAPA-A",
-
-        batchNo: "NPA-2608-A",
-
-        expiryDate:
-          "2026-12-31",
-
-        stockBaseQuantity:
-          1500,
-      },
-
-      {
-        id: "BAT-NAPA-B",
-
-        batchNo: "NPA-2608-B",
-
-        expiryDate:
-          "2027-12-31",
-
-        stockBaseQuantity:
-          3000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-002",
-
-    medicineName: "Ace Plus",
-    genericName:
-      "Paracetamol + Caffeine",
-    category: "Pain Relief",
-
-    baseUnit: "Tablet",
-
-    reorderLevelBase: 400,
-
-    batches: [
-      {
-        id: "BAT-ACE-A",
-
-        batchNo: "ACE-2608-A",
-
-        expiryDate:
-          "2027-04-15",
-
-        stockBaseQuantity:
-          1800,
-      },
-    ],
-  },
-
-  {
-    id: "MED-003",
-
-    medicineName:
-      "Napa Extend",
-
-    genericName:
-      "Paracetamol",
-
-    category:
-      "Pain Relief",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      400,
-
-    batches: [
-      {
-        id: "BAT-NEXT-A",
-
-        batchNo:
-          "NEXT-2608-A",
-
-        expiryDate:
-          "2027-05-20",
-
-        stockBaseQuantity:
-          1600,
-      },
-    ],
-  },
-
-  {
-    id: "MED-004",
-
-    medicineName:
-      "Seclo 20mg",
-
-    genericName:
-      "Omeprazole",
-
-    category:
-      "Gastric / Antacid",
-
-    baseUnit:
-      "Capsule",
-
-    reorderLevelBase:
-      800,
-
-    batches: [
-      {
-        id: "BAT-SEC-A",
-
-        batchNo:
-          "SCL-2608-A",
-
-        expiryDate:
-          "2026-10-30",
-
-        stockBaseQuantity:
-          1500,
-      },
-
-      {
-        id: "BAT-SEC-B",
-
-        batchNo:
-          "SCL-2609-B",
-
-        expiryDate:
-          "2027-04-30",
-
-        stockBaseQuantity:
-          2000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-005",
-
-    medicineName:
-      "Maxpro 20mg",
-
-    genericName:
-      "Esomeprazole",
-
-    category:
-      "Gastric / Antacid",
-
-    baseUnit:
-      "Capsule",
-
-    reorderLevelBase:
-      6000,
-
-    batches: [
-      {
-        id: "BAT-MAX-A",
-
-        batchNo:
-          "MXP-2608-C",
-
-        expiryDate:
-          "2028-01-31",
-
-        stockBaseQuantity:
-          22000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-006",
-
-    medicineName:
-      "Sergel 20mg",
-
-    genericName:
-      "Esomeprazole",
-
-    category:
-      "Gastric / Antacid",
-
-    baseUnit:
-      "Capsule",
-
-    reorderLevelBase:
-      5000,
-
-    batches: [
-      {
-        id: "BAT-SER-A",
-
-        batchNo:
-          "SG-2606",
-
-        expiryDate:
-          "2026-09-25",
-
-        stockBaseQuantity:
-          1200,
-      },
-    ],
-  },
-
-  {
-    id: "MED-007",
-
-    medicineName:
-      "Monas 10mg",
-
-    genericName:
-      "Montelukast",
-
-    category:
-      "Allergy",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      500,
-
-    batches: [
-      {
-        id: "BAT-MON-A",
-
-        batchNo:
-          "MN-2608",
-
-        expiryDate:
-          "2027-06-15",
-
-        stockBaseQuantity:
-          2000,
-      },
-    ],
-  },
-
-  {
-    id: "MED-008",
-
-    medicineName:
-      "Fexo 120mg",
-
-    genericName:
-      "Fexofenadine",
-
-    category:
-      "Allergy",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      500,
-
-    batches: [
-      {
-        id: "BAT-FEX-A",
-
-        batchNo:
-          "FX-2610",
-
-        expiryDate:
-          "2027-08-12",
-
-        stockBaseQuantity:
-          3200,
-      },
-    ],
-  },
-
-  {
-    id: "MED-009",
-
-    medicineName:
-      "Histacin",
-
-    genericName:
-      "Chlorpheniramine",
-
-    category:
-      "Allergy",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      600,
-
-    batches: [
-      {
-        id: "BAT-HIS-A",
-
-        batchNo:
-          "HS-2609",
-
-        expiryDate:
-          "2027-01-20",
-
-        stockBaseQuantity:
-          80,
-      },
-    ],
-  },
-
-  {
-    id: "MED-010",
-
-    medicineName:
-      "Amdocal 5mg",
-
-    genericName:
-      "Amlodipine",
-
-    category:
-      "Blood Pressure",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      400,
-
-    batches: [
-      {
-        id: "BAT-AMD-A",
-
-        batchNo:
-          "AM-2613",
-
-        expiryDate:
-          "2027-10-10",
-
-        stockBaseQuantity:
-          1400,
-      },
-    ],
-  },
-
-  {
-    id: "MED-011",
-
-    medicineName:
-      "Zimax 500mg",
-
-    genericName:
-      "Azithromycin",
-
-    category:
-      "Antibiotic",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      300,
-
-    batches: [
-      {
-        id: "BAT-ZIM-A",
-
-        batchNo:
-          "ZM-2611",
-
-        expiryDate:
-          "2027-07-30",
-
-        stockBaseQuantity:
-          750,
-      },
-    ],
-  },
-
-  {
-    id: "MED-012",
-
-    medicineName:
-      "DP 10mg",
-
-    genericName:
-      "Domperidone",
-
-    category:
-      "Gastric / Antacid",
-
-    baseUnit:
-      "Tablet",
-
-    reorderLevelBase:
-      300,
-
-    batches: [
-      {
-        id: "BAT-DP-A",
-
-        batchNo:
-          "DP-2612",
-
-        expiryDate:
-          "2027-05-15",
-
-        stockBaseQuantity:
-          0,
-      },
-    ],
-  },
-
-  {
-    id: "MED-013",
-
-    medicineName:
-      "Napa Syrup 100ml",
-
-    genericName:
-      "Paracetamol",
-
-    category:
-      "Pain Relief",
-
-    baseUnit:
-      "Bottle",
-
-    reorderLevelBase:
-      20,
-
-    batches: [
-      {
-        id: "BAT-SYR-A",
-
-        batchNo:
-          "NPS-2608",
-
-        expiryDate:
-          "2027-09-30",
-
-        stockBaseQuantity:
-          55,
-      },
-    ],
-  },
-];
+  message?: string;
+};
 
 /* =========================================================
-   DATE HELPERS
+   DATE
 ========================================================= */
 
 function getTodayDateOnly() {
@@ -583,7 +115,8 @@ function getTodayDateOnly() {
 
   const month =
     String(
-      today.getMonth() + 1,
+      today.getMonth() +
+        1,
     ).padStart(
       2,
       "0",
@@ -618,7 +151,7 @@ function formatDate(
 }
 
 /* =========================================================
-   STOCK CALCULATION HELPERS
+   STOCK LOGIC
 ========================================================= */
 
 function isBatchExpired(
@@ -630,14 +163,21 @@ function isBatchExpired(
   );
 }
 
-/*
- * Physical stock:
- *
- * Includes valid + expired stock.
- *
- * This means how much product physically
- * exists inside the pharmacy.
- */
+function isBatchAvailable(
+  batch: StockBatch,
+) {
+  return (
+    batch.status ===
+      "ACTIVE" &&
+    !isBatchExpired(
+      batch,
+    ) &&
+    batch.stockBaseQuantity >
+      0
+  );
+}
+
+/* Physical quantity inside pharmacy */
 function getPhysicalStock(
   medicine: StockMedicine,
 ) {
@@ -654,22 +194,17 @@ function getPhysicalStock(
 }
 
 /*
- * Available stock:
- *
- * Only NON-EXPIRED stock.
- *
- * This is the quantity Sales/Billing
- * is allowed to sell.
- */
+  Sellable stock only.
+
+  BLOCKED / EXPIRED / DEPLETED
+  batches are excluded.
+*/
 function getAvailableStock(
   medicine: StockMedicine,
 ) {
   return medicine.batches
     .filter(
-      (batch) =>
-        !isBatchExpired(
-          batch,
-        ),
+      isBatchAvailable,
     )
     .reduce(
       (
@@ -691,7 +226,9 @@ function getExpiredStock(
       (batch) =>
         isBatchExpired(
           batch,
-        ),
+        ) ||
+        batch.status ===
+          "EXPIRED",
     )
     .reduce(
       (
@@ -706,21 +243,11 @@ function getExpiredStock(
 }
 
 /*
- * LOW STOCK IS MEDICINE-LEVEL.
- *
- * Example:
- *
- * Batch A = 100
- * Batch B = 5000
- *
- * Total valid = 5100
- *
- * Reorder = 500
- *
- * Result = In Stock
- *
- * NOT Low Stock just because Batch A = 100.
- */
+  LOW STOCK MUST BE CHECKED
+  AT MEDICINE LEVEL.
+
+  Not batch level.
+*/
 function getStockStatus(
   medicine: StockMedicine,
 ): StockStatus {
@@ -745,28 +272,21 @@ function getStockStatus(
   return "In Stock";
 }
 
-/*
- * Finds nearest expiry among
- * NON-EXPIRED batches that still
- * contain stock.
- */
 function getNearestValidExpiry(
   medicine: StockMedicine,
 ) {
   const validBatches =
     medicine.batches
       .filter(
-        (batch) =>
-          !isBatchExpired(
-            batch,
-          ) &&
-          batch.stockBaseQuantity >
-            0,
+        isBatchAvailable,
       )
       .sort(
-        (a, b) =>
-          a.expiryDate.localeCompare(
-            b.expiryDate,
+        (
+          first,
+          second,
+        ) =>
+          first.expiryDate.localeCompare(
+            second.expiryDate,
           ),
       );
 
@@ -802,9 +322,7 @@ function getExpiryStatus(
   }
 
   const nearExpiry =
-    new Date(
-      today,
-    );
+    new Date(today);
 
   nearExpiry.setDate(
     nearExpiry.getDate() +
@@ -832,9 +350,7 @@ export default function StockPage() {
   ] =
     useState<
       StockMedicine[]
-    >(
-      initialStockItems,
-    );
+    >([]);
 
   const [
     searchTerm,
@@ -871,15 +387,180 @@ export default function StockPage() {
     useState<AdjustmentForm>({
       batchId: "",
 
-      type: "increase",
+      type:
+        "increase",
 
       quantity: "",
 
       reason: "",
     });
 
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
+    useState(true);
+
+  const [
+    isAdjusting,
+    setIsAdjusting,
+  ] =
+    useState(false);
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] =
+    useState("");
+
   /* =======================================================
-     SUMMARY STATISTICS
+     INITIAL DB LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    async function loadInitialStock() {
+      try {
+        const response =
+          await fetch(
+            "/api/stock",
+            {
+              cache:
+                "no-store",
+
+              signal:
+                controller.signal,
+            },
+          );
+
+        const result:
+          StockApiResponse =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !result.success
+        ) {
+          throw new Error(
+            result.message ||
+              "Failed to load stock.",
+          );
+        }
+
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setStockItems(
+            result.data ??
+              [],
+          );
+        }
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name ===
+            "AbortError"
+        ) {
+          return;
+        }
+
+        console.error(
+          "Initial stock error:",
+          error,
+        );
+
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Failed to load stock.",
+          );
+        }
+      } finally {
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setIsLoading(
+            false,
+          );
+        }
+      }
+    }
+
+    void loadInitialStock();
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  /* =======================================================
+     RELOAD STOCK
+  ======================================================= */
+
+  async function loadStock() {
+    try {
+      setErrorMessage("");
+
+      const response =
+        await fetch(
+          "/api/stock",
+          {
+            cache:
+              "no-store",
+          },
+        );
+
+      const result:
+        StockApiResponse =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Failed to load stock.",
+        );
+      }
+
+      const freshData =
+        result.data ?? [];
+
+      setStockItems(
+        freshData,
+      );
+
+      return freshData;
+    } catch (error) {
+      console.error(
+        "Load stock error:",
+        error,
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to load stock.";
+
+      setErrorMessage(
+        message,
+      );
+
+      throw error;
+    }
+  }
+
+  /* =======================================================
+     SUMMARY
   ======================================================= */
 
   const statistics =
@@ -925,7 +606,7 @@ export default function StockPage() {
     ]);
 
   /* =======================================================
-     SEARCH + FILTER + SORT
+     FILTER + SORT
   ======================================================= */
 
   const filteredStockItems =
@@ -966,7 +647,7 @@ export default function StockPage() {
                     ),
               );
 
-            const currentStatus =
+            const status =
               getStockStatus(
                 medicine,
               );
@@ -974,7 +655,7 @@ export default function StockPage() {
             const matchesStatus =
               statusFilter ===
                 "All" ||
-              currentStatus ===
+              status ===
                 statusFilter;
 
             return (
@@ -988,21 +669,20 @@ export default function StockPage() {
         ...filtered,
       ];
 
-      /*
-       * Sorting is based on
-       * VALID AVAILABLE BASE STOCK.
-       */
       if (
         sortOption ===
         "quantity-low-high"
       ) {
         result.sort(
-          (a, b) =>
+          (
+            first,
+            second,
+          ) =>
             getAvailableStock(
-              a,
+              first,
             ) -
             getAvailableStock(
-              b,
+              second,
             ),
         );
       }
@@ -1012,12 +692,15 @@ export default function StockPage() {
         "quantity-high-low"
       ) {
         result.sort(
-          (a, b) =>
+          (
+            first,
+            second,
+          ) =>
             getAvailableStock(
-              b,
+              second,
             ) -
             getAvailableStock(
-              a,
+              first,
             ),
         );
       }
@@ -1031,33 +714,24 @@ export default function StockPage() {
     ]);
 
   /* =======================================================
-     OPEN ADJUSTMENT
+     OPEN DETAILS
   ======================================================= */
 
   function openAdjustmentModal(
     medicine: StockMedicine,
   ) {
-    /*
-     * Default batch:
-     *
-     * nearest valid batch with stock
-     *
-     * otherwise first batch.
-     */
     const validBatch =
       [...medicine.batches]
         .filter(
-          (batch) =>
-            !isBatchExpired(
-              batch,
-            ) &&
-            batch.stockBaseQuantity >
-              0,
+          isBatchAvailable,
         )
         .sort(
-          (a, b) =>
-            a.expiryDate.localeCompare(
-              b.expiryDate,
+          (
+            first,
+            second,
+          ) =>
+            first.expiryDate.localeCompare(
+              second.expiryDate,
             ),
         )[0];
 
@@ -1084,6 +758,10 @@ export default function StockPage() {
   }
 
   function closeAdjustmentModal() {
+    if (isAdjusting) {
+      return;
+    }
+
     setSelectedMedicine(
       null,
     );
@@ -1100,10 +778,6 @@ export default function StockPage() {
     });
   }
 
-  /* =======================================================
-     SELECTED BATCH
-  ======================================================= */
-
   const selectedBatch =
     selectedMedicine?.batches.find(
       (batch) =>
@@ -1112,22 +786,17 @@ export default function StockPage() {
     ) ?? null;
 
   /* =======================================================
-     SAVE STOCK ADJUSTMENT
+     SAVE ADJUSTMENT
   ======================================================= */
 
-  function handleStockAdjustment(
+  async function handleStockAdjustment(
     event:
       FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
     if (
-      !selectedMedicine
-    ) {
-      return;
-    }
-
-    if (
+      !selectedMedicine ||
       !selectedBatch
     ) {
       window.alert(
@@ -1165,9 +834,6 @@ export default function StockPage() {
       return;
     }
 
-    /*
-     * Never allow negative stock.
-     */
     if (
       adjustmentForm.type ===
         "decrease" &&
@@ -1175,9 +841,7 @@ export default function StockPage() {
         selectedBatch.stockBaseQuantity
     ) {
       window.alert(
-        `Cannot decrease ${quantity.toLocaleString(
-          "en-US",
-        )} ${selectedMedicine.baseUnit}.\n\nBatch ${selectedBatch.batchNo} currently contains only ${selectedBatch.stockBaseQuantity.toLocaleString(
+        `Cannot decrease more than ${selectedBatch.stockBaseQuantity.toLocaleString(
           "en-US",
         )} ${selectedMedicine.baseUnit}.`,
       );
@@ -1185,76 +849,112 @@ export default function StockPage() {
       return;
     }
 
-    setStockItems(
-      (currentItems) =>
-        currentItems.map(
-          (medicine) => {
-            if (
-              medicine.id !==
-              selectedMedicine.id
-            ) {
-              return medicine;
-            }
+    try {
+      setIsAdjusting(
+        true,
+      );
 
-            return {
-              ...medicine,
+      const response =
+        await fetch(
+          "/api/stock/adjust",
+          {
+            method:
+              "POST",
 
-              batches:
-                medicine.batches.map(
-                  (batch) => {
-                    if (
-                      batch.id !==
-                      selectedBatch.id
-                    ) {
-                      return batch;
-                    }
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-                    const updatedQuantity =
-                      adjustmentForm.type ===
-                      "increase"
-                        ? batch.stockBaseQuantity +
-                          quantity
-                        : batch.stockBaseQuantity -
-                          quantity;
+            body:
+              JSON.stringify({
+                batchId:
+                  selectedBatch.id,
 
-                    return {
-                      ...batch,
+                type:
+                  adjustmentForm.type,
 
-                      stockBaseQuantity:
-                        updatedQuantity,
-                    };
-                  },
-                ),
-            };
+                quantity,
+
+                reason:
+                  adjustmentForm.reason.trim(),
+              }),
           },
-        ),
-    );
+        );
 
-    /*
-     * Later DB integration:
-     *
-     * this same action will create:
-     *
-     * stock_movements
-     *
-     * type:
-     * ADJUSTMENT_IN
-     * or
-     * ADJUSTMENT_OUT
-     *
-     * medicine_id
-     * batch_id
-     * quantity_change
-     * reason
-     * user_id
-     * created_at
-     */
+      const result:
+        MutationApiResponse =
+        await response.json();
 
-    closeAdjustmentModal();
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Stock adjustment failed.",
+        );
+      }
+
+      const freshData =
+        await loadStock();
+
+      const updatedMedicine =
+        freshData.find(
+          (medicine) =>
+            medicine.id ===
+            selectedMedicine.id,
+        );
+
+      if (
+        updatedMedicine
+      ) {
+        setSelectedMedicine(
+          updatedMedicine,
+        );
+
+        const updatedBatch =
+          updatedMedicine.batches.find(
+            (batch) =>
+              batch.id ===
+              selectedBatch.id,
+          );
+
+        setAdjustmentForm({
+          batchId:
+            updatedBatch?.id ??
+            "",
+
+          type:
+            "increase",
+
+          quantity: "",
+
+          reason: "",
+        });
+      } else {
+        closeAdjustmentModal();
+      }
+    } catch (error) {
+      console.error(
+        "Adjustment error:",
+        error,
+      );
+
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Stock adjustment failed.",
+      );
+    } finally {
+      setIsAdjusting(
+        false,
+      );
+    }
   }
 
   /* =======================================================
-     BADGE STYLE
+     BADGES
   ======================================================= */
 
   function stockStatusClass(
@@ -1305,9 +1005,7 @@ export default function StockPage() {
     <>
       <div className="mx-auto w-full max-w-[1600px] space-y-4">
 
-        {/* =================================================
-            SUMMARY
-        ================================================= */}
+        {/* SUMMARY */}
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 
@@ -1361,13 +1059,33 @@ export default function StockPage() {
 
         </section>
 
-        {/* =================================================
-            SEARCH + FILTER + SORT
-        ================================================= */}
+        {/* ERROR */}
+
+        {errorMessage ? (
+
+          <section className="flex items-center justify-between gap-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+
+            <p className="text-[11px] text-rose-700">
+              {errorMessage}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                void loadStock()
+              }
+              className="text-[10px] font-semibold text-rose-700 underline"
+            >
+              Retry
+            </button>
+
+          </section>
+
+        ) : null}
+
+        {/* SEARCH / FILTER / SORT */}
 
         <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row">
-
-          {/* SEARCH */}
 
           <div className="relative flex-1">
 
@@ -1382,7 +1100,8 @@ export default function StockPage() {
                 event,
               ) =>
                 setSearchTerm(
-                  event.target.value,
+                  event.target
+                    .value,
                 )
               }
               placeholder="Search medicine, generic, category or batch..."
@@ -1390,8 +1109,6 @@ export default function StockPage() {
             />
 
           </div>
-
-          {/* STATUS */}
 
           <select
             value={
@@ -1401,7 +1118,8 @@ export default function StockPage() {
               event,
             ) =>
               setStatusFilter(
-                event.target.value,
+                event.target
+                  .value,
               )
             }
             className="h-10 min-w-[180px] rounded-xl border border-slate-200 bg-white px-3 text-[11px] text-slate-700 outline-none focus:border-sky-400"
@@ -1424,8 +1142,6 @@ export default function StockPage() {
             </option>
 
           </select>
-
-          {/* QUANTITY SORT */}
 
           <select
             value={
@@ -1458,9 +1174,7 @@ export default function StockPage() {
 
         </section>
 
-        {/* =================================================
-            STOCK TABLE
-        ================================================= */}
+        {/* TABLE */}
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
@@ -1472,37 +1186,37 @@ export default function StockPage() {
 
                 <tr className="border-b border-slate-200 bg-slate-50/80">
 
-                  <th className="w-[270px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[270px]">
                     Medicine
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[140px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[140px]">
                     Available Stock
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[140px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[140px]">
                     Physical Stock
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[130px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[130px]">
                     Reorder Level
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[90px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[90px]">
                     Batches
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[145px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[145px]">
                     Nearest Expiry
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[120px] px-4 py-4 text-left text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[120px]">
                     Stock Status
-                  </th>
+                  </TableHead>
 
-                  <th className="w-[90px] px-4 py-4 text-center text-[10px] font-medium text-slate-500">
+                  <TableHead className="w-[90px] text-center">
                     Action
-                  </th>
+                  </TableHead>
 
                 </tr>
 
@@ -1510,290 +1224,346 @@ export default function StockPage() {
 
               <tbody>
 
-                {filteredStockItems.map(
-                  (medicine) => {
-                    const available =
-                      getAvailableStock(
-                        medicine,
-                      );
-
-                    const physical =
-                      getPhysicalStock(
-                        medicine,
-                      );
-
-                    const expired =
-                      getExpiredStock(
-                        medicine,
-                      );
-
-                    const status =
-                      getStockStatus(
-                        medicine,
-                      );
-
-                    const nearestExpiry =
-                      getNearestValidExpiry(
-                        medicine,
-                      );
-
-                    const nearestExpiryStatus =
-                      nearestExpiry
-                        ? getExpiryStatus(
-                            nearestExpiry,
-                          )
-                        : null;
-
-                    return (
-
-                      <tr
-                        key={
-                          medicine.id
-                        }
-                        className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
-                      >
-
-                        {/* MEDICINE */}
-
-                        <td className="px-4 py-4">
-
-                          <p className="text-[12px] font-semibold text-slate-900">
-                            {
-                              medicine.medicineName
-                            }
-                          </p>
-
-                          <p className="mt-1 text-[9px] text-slate-500">
-                            {
-                              medicine.genericName
-                            }
-                          </p>
-
-                          <div className="mt-1.5 flex items-center gap-2">
-
-                            <span className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[8px] font-medium text-sky-700">
-                              {
-                                medicine.category
-                              }
-                            </span>
-
-                            <span className="font-mono text-[8px] text-slate-400">
-                              {
-                                medicine.id
-                              }
-                            </span>
-
-                          </div>
-
-                        </td>
-
-                        {/* AVAILABLE */}
-
-                        <td className="px-4 py-4">
-
-                          <p
-                            className={`text-[12px] font-semibold ${
-                              status ===
-                              "Out of Stock"
-                                ? "text-rose-600"
-                                : status ===
-                                    "Low Stock"
-                                  ? "text-amber-600"
-                                  : "text-slate-900"
-                            }`}
-                          >
-                            {available.toLocaleString(
-                              "en-US",
-                            )}
-                          </p>
-
-                          <p className="mt-0.5 text-[8px] text-slate-400">
-                            {
-                              medicine.baseUnit
-                            }
-                          </p>
-
-                          <p className="mt-1 text-[7px] text-emerald-600">
-                            Sellable
-                          </p>
-
-                        </td>
-
-                        {/* PHYSICAL */}
-
-                        <td className="px-4 py-4">
-
-                          <p className="text-[12px] font-semibold text-slate-800">
-                            {physical.toLocaleString(
-                              "en-US",
-                            )}
-                          </p>
-
-                          <p className="mt-0.5 text-[8px] text-slate-400">
-                            {
-                              medicine.baseUnit
-                            }
-                          </p>
-
-                          {expired >
-                          0 ? (
-
-                            <p className="mt-1 text-[7px] text-rose-500">
-                              {expired.toLocaleString(
-                                "en-US",
-                              )}{" "}
-                              expired
-                            </p>
-
-                          ) : (
-
-                            <p className="mt-1 text-[7px] text-slate-400">
-                              No expired stock
-                            </p>
-
-                          )}
-
-                        </td>
-
-                        {/* REORDER */}
-
-                        <td className="px-4 py-4">
-
-                          <p className="text-[11px] font-medium text-slate-700">
-                            {medicine.reorderLevelBase.toLocaleString(
-                              "en-US",
-                            )}
-                          </p>
-
-                          <p className="mt-0.5 text-[8px] text-slate-400">
-                            {
-                              medicine.baseUnit
-                            }
-                          </p>
-
-                        </td>
-
-                        {/* BATCHES */}
-
-                        <td className="px-4 py-4">
-
-                          <p className="text-[12px] font-semibold text-slate-800">
-                            {
-                              medicine.batches.length
-                            }
-                          </p>
-
-                          <p className="mt-0.5 text-[8px] text-slate-400">
-                            batch
-                            {medicine.batches.length !==
-                            1
-                              ? "es"
-                              : ""}
-                          </p>
-
-                        </td>
-
-                        {/* NEAREST EXPIRY */}
-
-                        <td className="px-4 py-4">
-
-                          {nearestExpiry ? (
-
-                            <>
-                              <p className="text-[10px] font-medium text-slate-700">
-                                {formatDate(
-                                  nearestExpiry,
-                                )}
-                              </p>
-
-                              <span
-                                className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[7px] font-medium ${expiryStatusClass(
-                                  nearestExpiryStatus ??
-                                    "Valid",
-                                )}`}
-                              >
-                                {
-                                  nearestExpiryStatus
-                                }
-                              </span>
-                            </>
-
-                          ) : (
-
-                            <span className="text-[9px] text-slate-400">
-                              No valid batch
-                            </span>
-
-                          )}
-
-                        </td>
-
-                        {/* STATUS */}
-
-                        <td className="px-4 py-4">
-
-                          <span
-                            className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[8px] font-medium ${stockStatusClass(
-                              status,
-                            )}`}
-                          >
-                            {
-                              status
-                            }
-                          </span>
-
-                        </td>
-
-                        {/* ACTION */}
-
-                        <td className="px-4 py-4 text-center">
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openAdjustmentModal(
-                                medicine,
-                              )
-                            }
-                            title="View batches / Adjust stock"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 hover:bg-sky-50"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-
-                        </td>
-
-                      </tr>
-
-                    );
-                  },
-                )}
-
-                {filteredStockItems.length ===
-                0 ? (
+                {isLoading ? (
 
                   <tr>
 
                     <td
-                      colSpan={8}
+                      colSpan={
+                        8
+                      }
                       className="px-5 py-16 text-center"
                     >
 
-                      <Search className="mx-auto h-6 w-6 text-slate-300" />
+                      <Loader2 className="mx-auto h-7 w-7 animate-spin text-sky-600" />
 
                       <p className="mt-3 text-[12px] font-medium text-slate-700">
-                        No stock records found
-                      </p>
-
-                      <p className="mt-1 text-[10px] text-slate-400">
-                        Try another search or filter.
+                        Loading stock...
                       </p>
 
                     </td>
 
                   </tr>
 
-                ) : null}
+                ) : (
+
+                  <>
+                    {filteredStockItems.map(
+                      (
+                        medicine,
+                      ) => {
+                        const available =
+                          getAvailableStock(
+                            medicine,
+                          );
+
+                        const physical =
+                          getPhysicalStock(
+                            medicine,
+                          );
+
+                        const expired =
+                          getExpiredStock(
+                            medicine,
+                          );
+
+                        const status =
+                          getStockStatus(
+                            medicine,
+                          );
+
+                        const nearestExpiry =
+                          getNearestValidExpiry(
+                            medicine,
+                          );
+
+                        const nearestExpiryStatus =
+                          nearestExpiry
+                            ? getExpiryStatus(
+                                nearestExpiry,
+                              )
+                            : null;
+
+                        return (
+
+                          <tr
+                            key={
+                              medicine.id
+                            }
+                            className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
+                          >
+
+                            {/* MEDICINE */}
+
+                            <td className="px-4 py-4">
+
+                              <p className="text-[12px] font-semibold text-slate-900">
+                                {
+                                  medicine.medicineName
+                                }
+                              </p>
+
+                              <p className="mt-1 text-[9px] text-slate-500">
+                                {
+                                  medicine.genericName
+                                }
+                              </p>
+
+                              <div className="mt-1.5 flex items-center gap-2">
+
+                                <span className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[8px] font-medium text-sky-700">
+                                  {
+                                    medicine.category
+                                  }
+                                </span>
+
+                                <span className="font-mono text-[8px] text-slate-400">
+                                  {
+                                    medicine.id
+                                  }
+                                </span>
+
+                              </div>
+
+                            </td>
+
+                            {/* AVAILABLE */}
+
+                            <td className="px-4 py-4">
+
+                              <p
+                                className={`text-[12px] font-semibold ${
+                                  status ===
+                                  "Out of Stock"
+                                    ? "text-rose-600"
+                                    : status ===
+                                        "Low Stock"
+                                      ? "text-amber-600"
+                                      : "text-slate-900"
+                                }`}
+                              >
+
+                                {available.toLocaleString(
+                                  "en-US",
+                                )}
+
+                              </p>
+
+                              <p className="mt-0.5 text-[8px] text-slate-400">
+                                {
+                                  medicine.baseUnit
+                                }
+                              </p>
+
+                              <p className="mt-1 text-[7px] text-emerald-600">
+                                Sellable
+                              </p>
+
+                            </td>
+
+                            {/* PHYSICAL */}
+
+                            <td className="px-4 py-4">
+
+                              <p className="text-[12px] font-semibold text-slate-800">
+
+                                {physical.toLocaleString(
+                                  "en-US",
+                                )}
+
+                              </p>
+
+                              <p className="mt-0.5 text-[8px] text-slate-400">
+                                {
+                                  medicine.baseUnit
+                                }
+                              </p>
+
+                              {expired >
+                              0 ? (
+
+                                <p className="mt-1 text-[7px] text-rose-500">
+
+                                  {
+                                    expired
+                                  }{" "}
+
+                                  expired
+
+                                </p>
+
+                              ) : null}
+
+                            </td>
+
+                            {/* REORDER */}
+
+                            <td className="px-4 py-4">
+
+                              <p className="text-[11px] font-semibold text-slate-700">
+
+                                {medicine.reorderLevelBase.toLocaleString(
+                                  "en-US",
+                                )}
+
+                              </p>
+
+                              <p className="mt-0.5 text-[8px] text-slate-400">
+                                {
+                                  medicine.baseUnit
+                                }
+                              </p>
+
+                              {medicine.reorderMode ===
+                              "AUTO" ? (
+
+                                <p className="mt-1 text-[7px] font-medium text-violet-600">
+                                  Auto
+                                </p>
+
+                              ) : null}
+
+                            </td>
+
+                            {/* BATCH */}
+
+                            <td className="px-4 py-4">
+
+                              <span className="inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-medium text-violet-700">
+
+                                {
+                                  medicine.batches
+                                    .length
+                                }
+
+                              </span>
+
+                            </td>
+
+                            {/* EXPIRY */}
+
+                            <td className="px-4 py-4">
+
+                              {nearestExpiry ? (
+
+                                <>
+                                  <p className="text-[9px] font-medium text-slate-700">
+
+                                    {formatDate(
+                                      nearestExpiry,
+                                    )}
+
+                                  </p>
+
+                                  {nearestExpiryStatus ? (
+
+                                    <span
+                                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[7px] font-medium ${expiryStatusClass(
+                                        nearestExpiryStatus,
+                                      )}`}
+                                    >
+                                      {
+                                        nearestExpiryStatus
+                                      }
+                                    </span>
+
+                                  ) : null}
+                                </>
+
+                              ) : (
+
+                                <span className="text-[9px] text-slate-400">
+                                  No valid batch
+                                </span>
+
+                              )}
+
+                            </td>
+
+                            {/* STATUS */}
+
+                            <td className="px-4 py-4">
+
+                              <span
+                                className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[8px] font-medium ${stockStatusClass(
+                                  status,
+                                )}`}
+                              >
+                                {
+                                  status
+                                }
+                              </span>
+
+                            </td>
+
+                            {/* ACTION */}
+
+                            <td className="px-4 py-4 text-center">
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openAdjustmentModal(
+                                    medicine,
+                                  )
+                                }
+                                disabled={
+                                  medicine.batches
+                                    .length ===
+                                  0
+                                }
+                                title={
+                                  medicine.batches
+                                    .length >
+                                  0
+                                    ? "View batches / Adjust stock"
+                                    : "No batch available"
+                                }
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                              >
+
+                                <Pencil className="h-4 w-4" />
+
+                              </button>
+
+                            </td>
+
+                          </tr>
+
+                        );
+                      },
+                    )}
+
+                    {filteredStockItems.length ===
+                    0 ? (
+
+                      <tr>
+
+                        <td
+                          colSpan={
+                            8
+                          }
+                          className="px-5 py-16 text-center"
+                        >
+
+                          <Search className="mx-auto h-6 w-6 text-slate-300" />
+
+                          <p className="mt-3 text-[12px] font-medium text-slate-700">
+                            No stock records found
+                          </p>
+
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            Try another search or filter.
+                          </p>
+
+                        </td>
+
+                      </tr>
+
+                    ) : null}
+                  </>
+
+                )}
 
               </tbody>
 
@@ -1804,6 +1574,7 @@ export default function StockPage() {
           <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
 
             <p className="text-[9px] text-slate-500">
+
               Showing{" "}
               {
                 filteredStockItems.length
@@ -1813,6 +1584,7 @@ export default function StockPage() {
                 stockItems.length
               }{" "}
               medicines
+
             </p>
 
           </div>
@@ -1822,7 +1594,7 @@ export default function StockPage() {
       </div>
 
       {/* ===================================================
-          BATCH + STOCK ADJUSTMENT MODAL
+          STOCK DETAILS + ADJUSTMENT MODAL
       =================================================== */}
 
       {selectedMedicine ? (
@@ -1842,13 +1614,17 @@ export default function StockPage() {
                 </h2>
 
                 <p className="mt-1 text-[10px] text-slate-500">
+
                   {
                     selectedMedicine.medicineName
                   }{" "}
+
                   · Base Unit:{" "}
+
                   {
                     selectedMedicine.baseUnit
                   }
+
                 </p>
 
               </div>
@@ -1858,16 +1634,21 @@ export default function StockPage() {
                 onClick={
                   closeAdjustmentModal
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+                disabled={
+                  isAdjusting
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-40"
               >
+
                 <X className="h-5 w-5" />
+
               </button>
 
             </div>
 
             <div className="space-y-5 p-5">
 
-              {/* STOCK SUMMARY */}
+              {/* SUMMARY */}
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
@@ -1904,29 +1685,22 @@ export default function StockPage() {
 
               </div>
 
-              {/* =============================================
-                  BATCH INVENTORY
-              ============================================= */}
+              {/* BATCH LIST */}
 
               <section>
 
                 <h3 className="text-[12px] font-semibold text-slate-900">
-                  Batch Inventory
+                  Inventory Batches
                 </h3>
 
                 <p className="mt-1 text-[9px] text-slate-500">
-                  Stock is maintained separately for every batch.
+                  Actual inventory is maintained separately for every batch.
                 </p>
 
                 <div className="mt-3 space-y-2">
 
                   {selectedMedicine.batches.map(
                     (batch) => {
-                      const expired =
-                        isBatchExpired(
-                          batch,
-                        );
-
                       const expiryStatus =
                         getExpiryStatus(
                           batch.expiryDate,
@@ -1938,23 +1712,22 @@ export default function StockPage() {
                           key={
                             batch.id
                           }
-                          className={`grid grid-cols-1 gap-3 rounded-xl border p-3 sm:grid-cols-[1.2fr_1fr_1fr_auto] sm:items-center ${
-                            expired
-                              ? "border-rose-100 bg-rose-50/40"
-                              : "border-slate-200"
-                          }`}
+                          className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_160px_120px_100px] sm:items-center"
                         >
 
                           <div>
 
-                            <p className="font-mono text-[10px] font-semibold text-slate-800">
+                            <p className="text-[10px] font-semibold text-slate-800">
                               {
                                 batch.batchNo
                               }
                             </p>
 
                             <p className="mt-1 text-[8px] text-slate-400">
-                              Batch
+                              Batch ID #
+                              {
+                                batch.id
+                              }
                             </p>
 
                           </div>
@@ -1962,12 +1735,15 @@ export default function StockPage() {
                           <div>
 
                             <p className="text-[11px] font-semibold text-slate-800">
+
                               {batch.stockBaseQuantity.toLocaleString(
                                 "en-US",
                               )}{" "}
+
                               {
                                 selectedMedicine.baseUnit
                               }
+
                             </p>
 
                             <p className="mt-1 text-[8px] text-slate-400">
@@ -1979,9 +1755,11 @@ export default function StockPage() {
                           <div>
 
                             <p className="text-[9px] font-medium text-slate-700">
+
                               {formatDate(
                                 batch.expiryDate,
                               )}
+
                             </p>
 
                             <p className="mt-1 text-[8px] text-slate-400">
@@ -2010,9 +1788,7 @@ export default function StockPage() {
 
               </section>
 
-              {/* =============================================
-                  ADJUSTMENT
-              ============================================= */}
+              {/* ADJUSTMENT */}
 
               <form
                 onSubmit={
@@ -2026,7 +1802,7 @@ export default function StockPage() {
                 </h3>
 
                 <p className="mt-1 text-[9px] text-slate-500">
-                  Adjust a specific batch only. Later every adjustment will create a stock movement audit record.
+                  Every adjustment updates the selected batch and creates a stock movement audit record.
                 </p>
 
                 {/* BATCH */}
@@ -2041,6 +1817,9 @@ export default function StockPage() {
                     value={
                       adjustmentForm.batchId
                     }
+                    disabled={
+                      isAdjusting
+                    }
                     onChange={(
                       event,
                     ) =>
@@ -2048,10 +1827,11 @@ export default function StockPage() {
                         ...adjustmentForm,
 
                         batchId:
-                          event.target.value,
+                          event.target
+                            .value,
                       })
                     }
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[10px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[10px] text-slate-700 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100"
                   >
 
                     {selectedMedicine.batches.map(
@@ -2065,21 +1845,21 @@ export default function StockPage() {
                             batch.id
                           }
                         >
+
                           {
                             batch.batchNo
                           }{" "}
+
                           —{" "}
+
                           {batch.stockBaseQuantity.toLocaleString(
                             "en-US",
                           )}{" "}
+
                           {
                             selectedMedicine.baseUnit
                           }
-                          {isBatchExpired(
-                            batch,
-                          )
-                            ? " — EXPIRED"
-                            : ""}
+
                         </option>
 
                       ),
@@ -2089,7 +1869,7 @@ export default function StockPage() {
 
                 </div>
 
-                {/* SELECTED BATCH INFO */}
+                {/* CURRENT BATCH */}
 
                 {selectedBatch ? (
 
@@ -2115,9 +1895,9 @@ export default function StockPage() {
 
                       <SmallInfo
                         label="Status"
-                        value={getExpiryStatus(
-                          selectedBatch.expiryDate,
-                        )}
+                        value={
+                          selectedBatch.status
+                        }
                       />
 
                     </div>
@@ -2138,6 +1918,9 @@ export default function StockPage() {
 
                     <button
                       type="button"
+                      disabled={
+                        isAdjusting
+                      }
                       onClick={() =>
                         setAdjustmentForm({
                           ...adjustmentForm,
@@ -2153,13 +1936,18 @@ export default function StockPage() {
                           : "border-slate-200 text-slate-500"
                       }`}
                     >
+
                       <ArrowUp className="h-4 w-4" />
 
                       Increase
+
                     </button>
 
                     <button
                       type="button"
+                      disabled={
+                        isAdjusting
+                      }
                       onClick={() =>
                         setAdjustmentForm({
                           ...adjustmentForm,
@@ -2175,9 +1963,11 @@ export default function StockPage() {
                           : "border-slate-200 text-slate-500"
                       }`}
                     >
+
                       <ArrowDown className="h-4 w-4" />
 
                       Decrease
+
                     </button>
 
                   </div>
@@ -2189,11 +1979,13 @@ export default function StockPage() {
                 <div className="mt-4">
 
                   <label className="mb-2 block text-[10px] font-medium text-slate-700">
+
                     Quantity (
                     {
                       selectedMedicine.baseUnit
                     }
                     ) *
+
                   </label>
 
                   <input
@@ -2203,6 +1995,9 @@ export default function StockPage() {
                     value={
                       adjustmentForm.quantity
                     }
+                    disabled={
+                      isAdjusting
+                    }
                     onChange={(
                       event,
                     ) =>
@@ -2210,11 +2005,12 @@ export default function StockPage() {
                         ...adjustmentForm,
 
                         quantity:
-                          event.target.value,
+                          event.target
+                            .value,
                       })
                     }
                     placeholder={`Enter ${selectedMedicine.baseUnit} quantity`}
-                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    className="h-10 w-full rounded-xl border border-slate-200 px-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100"
                   />
 
                 </div>
@@ -2228,9 +2024,11 @@ export default function StockPage() {
                   </label>
 
                   <textarea
-                    rows={3}
                     value={
                       adjustmentForm.reason
+                    }
+                    disabled={
+                      isAdjusting
                     }
                     onChange={(
                       event,
@@ -2239,34 +2037,42 @@ export default function StockPage() {
                         ...adjustmentForm,
 
                         reason:
-                          event.target.value,
+                          event.target
+                            .value,
                       })
                     }
-                    placeholder="Example: damaged medicine, stock recount, return correction..."
-                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    rows={3}
+                    placeholder="Example: Physical count correction"
+                    className="w-full resize-none rounded-xl border border-slate-200 px-3 py-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100"
                   />
 
                 </div>
 
-                {/* BUTTONS */}
+                {/* SAVE */}
 
-                <div className="mt-5 flex justify-end gap-2">
-
-                  <button
-                    type="button"
-                    onClick={
-                      closeAdjustmentModal
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-4 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    Cancel
-                  </button>
+                <div className="mt-5 flex justify-end">
 
                   <button
                     type="submit"
-                    className="h-10 rounded-xl bg-sky-600 px-5 text-[10px] font-semibold text-white hover:bg-sky-700"
+                    disabled={
+                      isAdjusting
+                    }
+                    className="inline-flex h-10 min-w-[150px] items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 text-[10px] font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-sky-400"
                   >
-                    Save Adjustment
+
+                    {isAdjusting ? (
+
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+
+                    ) : (
+
+                      "Save Adjustment"
+
+                    )}
+
                   </button>
 
                 </div>
@@ -2285,8 +2091,26 @@ export default function StockPage() {
 }
 
 /* =========================================================
-   SMALL COMPONENTS
+   COMPONENTS
 ========================================================= */
+
+function TableHead({
+  children,
+  className = "",
+}: {
+  children:
+    ReactNode;
+
+  className?: string;
+}) {
+  return (
+    <th
+      className={`px-4 py-4 text-left text-[10px] font-medium text-slate-500 ${className}`}
+    >
+      {children}
+    </th>
+  );
+}
 
 function SummaryCard({
   label,
@@ -2297,9 +2121,7 @@ function SummaryCard({
 }: {
   label: string;
 
-  value:
-    | string
-    | number;
+  value: number;
 
   description: string;
 
@@ -2316,9 +2138,9 @@ function SummaryCard({
           {label}
         </p>
 
-        <h3 className="mt-1 text-[24px] font-semibold text-slate-950">
+        <p className="mt-1 text-[24px] font-semibold text-slate-950">
           {value}
-        </h3>
+        </p>
 
         <p className="mt-1 text-[9px] text-slate-400">
           {description}
@@ -2341,6 +2163,7 @@ function InfoBox({
   value,
 }: {
   label: string;
+
   value: string;
 }) {
   return (
@@ -2363,6 +2186,7 @@ function SmallInfo({
   value,
 }: {
   label: string;
+
   value: string;
 }) {
   return (
@@ -2372,7 +2196,7 @@ function SmallInfo({
         {label}
       </p>
 
-      <p className="mt-1 text-[9px] font-semibold text-slate-700">
+      <p className="mt-1 text-[10px] font-semibold text-slate-700">
         {value}
       </p>
 
