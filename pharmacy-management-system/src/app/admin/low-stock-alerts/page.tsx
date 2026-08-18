@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  type ReactNode,
 } from "react";
 
 import {
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 
 import {
+  usePathname,
   useRouter,
 } from "next/navigation";
 
@@ -64,22 +66,23 @@ type LowStockItem = {
   status: AlertStatus;
 };
 
+type LowStockSummary = {
+  outOfStock: number;
+
+  lowStock: number;
+
+  totalAffected: number;
+};
+
 type LowStockResponse = {
   success: boolean;
 
   message?: string;
 
   data?: {
-    summary: {
-      outOfStock: number;
+    summary: LowStockSummary;
 
-      lowStock: number;
-
-      totalAffected: number;
-    };
-
-    items:
-      LowStockItem[];
+    items: LowStockItem[];
   };
 };
 
@@ -89,34 +92,97 @@ type RecalculateResponse = {
   message?: string;
 
   data?: {
-    totalAutoMedicines:
-      number;
+    totalAutoMedicines: number;
 
-    calculatedCount:
-      number;
+    calculatedCount: number;
 
-    fallbackCount:
-      number;
+    fallbackCount: number;
   };
 };
 
 /* =========================================================
-   FORMAT QUANTITY
+   HELPERS
 ========================================================= */
 
 function formatQuantity(
   value: number,
 ) {
-  return value.toLocaleString(
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isFinite(parsed)
+  ) {
+    return "0";
+  }
+
+  return parsed.toLocaleString(
     "en-US",
     {
-      minimumFractionDigits:
-        0,
+      minimumFractionDigits: 0,
 
-      maximumFractionDigits:
-        3,
+      maximumFractionDigits: 3,
     },
   );
+}
+
+/* =========================================================
+   API
+========================================================= */
+
+async function fetchLowStockData() {
+  const response =
+    await fetch(
+      "/api/low-stock",
+      {
+        method: "GET",
+
+        cache: "no-store",
+      },
+    );
+
+  const result =
+    (await response.json()) as
+      LowStockResponse;
+
+  if (
+    !response.ok ||
+    !result.success ||
+    !result.data
+  ) {
+    throw new Error(
+      result.message ||
+        "Failed to load low stock alerts.",
+    );
+  }
+
+  return result.data;
+}
+
+async function recalculateReorderLevels() {
+  const response =
+    await fetch(
+      "/api/reorder/recalculate",
+      {
+        method: "POST",
+      },
+    );
+
+  const result =
+    (await response.json()) as
+      RecalculateResponse;
+
+  if (
+    !response.ok ||
+    !result.success
+  ) {
+    throw new Error(
+      result.message ||
+        "Auto reorder calculation failed.",
+    );
+  }
+
+  return result;
 }
 
 /* =========================================================
@@ -126,6 +192,27 @@ function formatQuantity(
 export default function LowStockAlertsPage() {
   const router =
     useRouter();
+
+  const pathname =
+    usePathname();
+
+  /* =======================================================
+     ROLE CONTEXT FROM CURRENT PANEL
+
+     Authentication/authorization will be added later.
+
+     For now:
+     - Admin route = purchase actions allowed
+     - Pharmacist route = read-only alerts
+  ======================================================= */
+
+  const isPharmacistPanel =
+    pathname.startsWith(
+      "/pharmacist",
+    );
+
+  const canManagePurchase =
+    !isPharmacistPanel;
 
   /* =======================================================
      DATA
@@ -143,7 +230,7 @@ export default function LowStockAlertsPage() {
     summary,
     setSummary,
   ] =
-    useState({
+    useState<LowStockSummary>({
       outOfStock: 0,
 
       lowStock: 0,
@@ -174,93 +261,146 @@ export default function LowStockAlertsPage() {
     useState("");
 
   /* =======================================================
-     LOAD LOW STOCK DATA
+     APPLY DATA
   ======================================================= */
 
-  const loadLowStock =
+  const applyLowStockData =
     useCallback(
-      async () => {
-        const response =
-          await fetch(
-            "/api/low-stock",
-            {
-              method:
-                "GET",
+      (
+        data: {
+          summary:
+            LowStockSummary;
 
-              cache:
-                "no-store",
-            },
-          );
-
-        const result:
-          LowStockResponse =
-          await response.json();
-
-        if (
-          !response.ok ||
-          !result.success ||
-          !result.data
-        ) {
-          throw new Error(
-            result.message ||
-              "Failed to load low stock alerts.",
-          );
-        }
-
+          items:
+            LowStockItem[];
+        },
+      ) => {
         setSummary(
-          result.data.summary,
+          data.summary,
         );
 
         setItems(
-          result.data.items,
+          data.items,
         );
       },
       [],
     );
 
   /* =======================================================
-     RECALCULATE AUTO REORDER LEVELS
+     INITIAL LOAD
+
+     ADMIN:
+     1. Recalculate AUTO reorder levels.
+     2. Load current alerts.
+
+     PHARMACIST:
+     1. Read existing low-stock data only.
+     2. Does NOT trigger reorder-level mutation.
   ======================================================= */
 
-  const recalculateAutoLevels =
-    useCallback(
-      async () => {
-        const response =
-          await fetch(
-            "/api/reorder/recalculate",
-            {
-              method:
-                "POST",
-            },
-          );
+  useEffect(() => {
+    let cancelled =
+      false;
 
-        const result:
-          RecalculateResponse =
-          await response.json();
+    async function initialLoad() {
+      let autoWarning =
+        "";
 
-        if (
-          !response.ok ||
-          !result.success
+      /* ===============================================
+         ADMIN-ONLY AUTO RECALCULATION
+      =============================================== */
+
+      if (
+        canManagePurchase
+      ) {
+        try {
+          await recalculateReorderLevels();
+        } catch (
+          calculationError
         ) {
-          throw new Error(
-            result.message ||
-              "Auto reorder calculation failed.",
+          console.error(
+            "Initial auto reorder calculation error:",
+            calculationError,
           );
+
+          autoWarning =
+            calculationError instanceof
+              Error
+              ? `${calculationError.message} Existing reorder levels are being shown.`
+              : "Auto reorder calculation could not be refreshed. Existing reorder levels are being shown.";
+        }
+      }
+
+      /* ===============================================
+         LOAD ALERT DATA
+      =============================================== */
+
+      try {
+        const data =
+          await fetchLowStockData();
+
+        if (cancelled) {
+          return;
         }
 
-        return result;
-      },
-      [],
-    );
+        applyLowStockData(
+          data,
+        );
+
+        setWarningMessage(
+          autoWarning,
+        );
+
+        setErrorMessage(
+          "",
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "Initial low stock load error:",
+          error,
+        );
+
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Failed to load low stock alerts.",
+        );
+
+        setWarningMessage(
+          autoWarning,
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoading(
+            false,
+          );
+        }
+      }
+    }
+
+    void initialLoad();
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    applyLowStockData,
+    canManagePurchase,
+  ]);
 
   /* =======================================================
-     REFRESH ALERTS
+     MANUAL REFRESH
 
-     STEP 1:
-     recalculate AUTO medicines
+     ADMIN:
+     recalculates AUTO reorder levels + reloads.
 
-     STEP 2:
-     reload low stock data
+     PHARMACIST:
+     only reloads existing alert data.
   ======================================================= */
 
   const refreshAlerts =
@@ -279,36 +419,51 @@ export default function LowStockAlertsPage() {
             "",
           );
 
-          /* ===============================================
-             RECALCULATE AUTO LEVEL
-          =============================================== */
+          let autoWarning =
+            "";
 
-          try {
-            await recalculateAutoLevels();
-          } catch (
-            calculationError
+          /* =============================================
+             ADMIN-ONLY RECALCULATION
+          ============================================= */
+
+          if (
+            canManagePurchase
           ) {
-            console.error(
-              "Auto reorder calculation error:",
-              calculationError,
-            );
+            try {
+              await recalculateReorderLevels();
+            } catch (
+              calculationError
+            ) {
+              console.error(
+                "Auto reorder calculation error:",
+                calculationError,
+              );
 
-            setWarningMessage(
-              calculationError instanceof
-                Error
-                ? `${calculationError.message} Existing reorder levels are being shown.`
-                : "Auto reorder calculation could not be refreshed. Existing reorder levels are being shown.",
-            );
+              autoWarning =
+                calculationError instanceof
+                  Error
+                  ? `${calculationError.message} Existing reorder levels are being shown.`
+                  : "Auto reorder calculation could not be refreshed. Existing reorder levels are being shown.";
+            }
           }
 
-          /* ===============================================
-             LOAD ALERT LIST
-          =============================================== */
+          /* =============================================
+             LOAD UPDATED ALERT DATA
+          ============================================= */
 
-          await loadLowStock();
+          const data =
+            await fetchLowStockData();
+
+          applyLowStockData(
+            data,
+          );
+
+          setWarningMessage(
+            autoWarning,
+          );
         } catch (error) {
           console.error(
-            "Low stock load error:",
+            "Low stock refresh error:",
             error,
           );
 
@@ -324,29 +479,24 @@ export default function LowStockAlertsPage() {
         }
       },
       [
-        loadLowStock,
-        recalculateAutoLevels,
+        applyLowStockData,
+        canManagePurchase,
       ],
     );
 
   /* =======================================================
-     INITIAL LOAD
-  ======================================================= */
+     ADMIN PURCHASE
 
-  useEffect(
-    () => {
-      void refreshAlerts();
-    },
-    [
-      refreshAlerts,
-    ],
-  );
-
-  /* =======================================================
-     GO TO PURCHASE
+     Pharmacist never receives this action in UI.
   ======================================================= */
 
   function goToPurchase() {
+    if (
+      !canManagePurchase
+    ) {
+      return;
+    }
+
     router.push(
       "/admin/purchase",
     );
@@ -358,15 +508,11 @@ export default function LowStockAlertsPage() {
 
   return (
     <div className="space-y-4">
-
       {/* ===================================================
-          SUMMARY CARDS
+          SUMMARY
       =================================================== */}
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-
-        {/* OUT OF STOCK */}
-
         <SummaryCard
           label="Out of Stock"
           value={
@@ -375,8 +521,6 @@ export default function LowStockAlertsPage() {
           className="border-rose-200 bg-rose-50/70"
           valueClassName="text-rose-600"
         />
-
-        {/* LOW STOCK */}
 
         <SummaryCard
           label="Low Stock"
@@ -387,8 +531,6 @@ export default function LowStockAlertsPage() {
           valueClassName="text-amber-600"
         />
 
-        {/* TOTAL */}
-
         <SummaryCard
           label="Total Affected"
           value={
@@ -397,45 +539,54 @@ export default function LowStockAlertsPage() {
           className="border-sky-200 bg-sky-50/70"
           valueClassName="text-sky-700"
         />
-
       </section>
 
       {/* ===================================================
-          CREATE PURCHASE ORDER BUTTON
+          ADMIN-ONLY PURCHASE ACTION
       =================================================== */}
 
-      <section className="flex justify-end">
+      {canManagePurchase ? (
+        <section className="flex justify-end">
+          <button
+            type="button"
+            onClick={
+              goToPurchase
+            }
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
+          >
+            <ClipboardPlus className="h-4 w-4" />
 
-        <button
-          type="button"
-          onClick={
-            goToPurchase
-          }
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-sky-700"
-        >
-          <ClipboardPlus className="h-4 w-4" />
-
-          Create Purchase Order
-        </button>
-
-      </section>
+            Create Purchase Order
+          </button>
+        </section>
+      ) : null}
 
       {/* ===================================================
-          AUTO CALCULATION WARNING
+          PHARMACIST INFO
+      =================================================== */}
+
+      {isPharmacistPanel ? (
+        <section className="rounded-xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+          <p className="text-[9px] leading-5 text-sky-700">
+            Low-stock alerts are provided for monitoring purposes.
+            Purchase orders and inventory replenishment are managed
+            by the administrator.
+          </p>
+        </section>
+      ) : null}
+
+      {/* ===================================================
+          WARNING
       =================================================== */}
 
       {warningMessage ? (
-
         <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-
           <p className="text-[10px] leading-5 text-amber-700">
             {
               warningMessage
             }
           </p>
-
         </section>
-
       ) : null}
 
       {/* ===================================================
@@ -443,10 +594,8 @@ export default function LowStockAlertsPage() {
       =================================================== */}
 
       {errorMessage ? (
-
-        <section className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-
-          <p className="text-[10px] text-rose-700">
+        <section className="flex items-center justify-between gap-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <p className="text-[10px] leading-5 text-rose-700">
             {
               errorMessage
             }
@@ -457,29 +606,24 @@ export default function LowStockAlertsPage() {
             onClick={() =>
               void refreshAlerts()
             }
-            className="text-[9px] font-semibold text-rose-700 underline"
+            className="shrink-0 text-[9px] font-semibold text-rose-700 underline"
           >
             Retry
           </button>
-
         </section>
-
       ) : null}
 
       {/* ===================================================
-          LOW STOCK TABLE
+          TABLE
       =================================================== */}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
         {/* =================================================
-            TABLE HEADER
+            HEADER
         ================================================= */}
 
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-
             <h2 className="text-[12px] font-semibold text-slate-900">
               Low Stock Alert List
             </h2>
@@ -487,25 +631,28 @@ export default function LowStockAlertsPage() {
             <p className="mt-1 text-[9px] text-slate-400">
               Available stock is checked against each medicine&apos;s effective reorder level.
             </p>
-
           </div>
 
-          {!isLoading ? (
+          <button
+            type="button"
+            onClick={() =>
+              void refreshAlerts()
+            }
+            disabled={
+              isLoading
+            }
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-[9px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCcw
+              className={`h-3.5 w-3.5 ${
+                isLoading
+                  ? "animate-spin"
+                  : ""
+              }`}
+            />
 
-            <button
-              type="button"
-              onClick={() =>
-                void refreshAlerts()
-              }
-              className="inline-flex items-center gap-1.5 text-[9px] font-medium text-slate-500 transition hover:text-sky-600"
-            >
-              <RefreshCcw className="h-3 w-3" />
-
-              Refresh
-            </button>
-
-          ) : null}
-
+            Refresh
+          </button>
         </div>
 
         {/* =================================================
@@ -513,61 +660,49 @@ export default function LowStockAlertsPage() {
         ================================================= */}
 
         {isLoading ? (
-
           <div className="flex min-h-[280px] items-center justify-center">
-
             <div className="text-center">
-
               <Loader2 className="mx-auto h-7 w-7 animate-spin text-sky-600" />
 
               <p className="mt-3 text-[10px] text-slate-500">
                 Checking inventory and reorder levels...
               </p>
-
             </div>
-
           </div>
-
-        ) : items.length === 0 ? (
-
-          /* =================================================
-             HEALTHY STOCK
-          ================================================= */
+        ) : items.length ===
+          0 ? (
+          /* ===============================================
+             EMPTY
+          =============================================== */
 
           <div className="flex min-h-[280px] items-center justify-center">
-
             <div className="text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+                <RefreshCcw className="h-5 w-5 text-emerald-600" />
+              </div>
 
-              <p className="text-[12px] font-semibold text-emerald-700">
+              <p className="mt-3 text-[12px] font-semibold text-emerald-700">
                 Stock levels are healthy
               </p>
 
               <p className="mt-1 text-[9px] text-slate-400">
                 No low-stock or out-of-stock medicine found.
               </p>
-
             </div>
-
           </div>
-
         ) : (
-
-          /* =================================================
+          /* ===============================================
              TABLE
-          ================================================= */
+          =============================================== */
 
           <div className="overflow-x-auto">
-
-            <table className="w-full min-w-[1100px] border-collapse">
-
+            <table className="w-full min-w-[1000px] border-collapse">
               {/* =============================================
-                  TABLE HEAD
+                  HEAD
               ============================================= */}
 
               <thead className="bg-slate-50">
-
                 <tr>
-
                   <TableHead>
                     Medicine Name
                   </TableHead>
@@ -596,38 +731,32 @@ export default function LowStockAlertsPage() {
                     Status
                   </TableHead>
 
-                  <TableHead>
-                    Action
-                  </TableHead>
-
+                  {canManagePurchase ? (
+                    <TableHead>
+                      Action
+                    </TableHead>
+                  ) : null}
                 </tr>
-
               </thead>
 
               {/* =============================================
-                  TABLE BODY
+                  BODY
               ============================================= */}
 
               <tbody>
-
                 {items.map(
-                  (
-                    item,
-                  ) => (
-
+                  (item) => (
                     <tr
                       key={
-                        item.id
+                        item.databaseId
                       }
                       className="border-t border-slate-100 transition hover:bg-slate-50/70"
                     >
-
                       {/* =====================================
                           MEDICINE
                       ===================================== */}
 
                       <td className="px-4 py-4">
-
                         <p className="text-[11px] font-semibold text-slate-900">
                           {
                             item.medicineName
@@ -639,7 +768,6 @@ export default function LowStockAlertsPage() {
                             item.id
                           }
                         </p>
-
                       </td>
 
                       {/* =====================================
@@ -647,29 +775,24 @@ export default function LowStockAlertsPage() {
                       ===================================== */}
 
                       <td className="px-4 py-4">
-
                         <span className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[8px] font-medium text-sky-700">
-
                           {
                             item.category
                           }
-
                         </span>
-
                       </td>
 
                       {/* =====================================
-                          AVAILABLE QUANTITY
+                          AVAILABLE
                       ===================================== */}
 
                       <td className="px-4 py-4">
-
                         <p
                           className={`text-[11px] font-semibold ${
                             item.status ===
                             "OUT_OF_STOCK"
                               ? "text-rose-600"
-                              : "text-rose-500"
+                              : "text-amber-600"
                           }`}
                         >
                           {
@@ -679,6 +802,11 @@ export default function LowStockAlertsPage() {
                           }
                         </p>
 
+                        <p className="mt-1 text-[7px] text-slate-400">
+                          {
+                            item.baseUnit
+                          }
+                        </p>
                       </td>
 
                       {/* =====================================
@@ -686,51 +814,41 @@ export default function LowStockAlertsPage() {
                       ===================================== */}
 
                       <td className="px-4 py-4">
-
-                        <p className="text-[11px] font-medium text-slate-600">
-
+                        <p className="text-[11px] font-medium text-slate-700">
                           {
                             formatQuantity(
                               item.minimumRequired,
                             )
                           }
-
                         </p>
 
-                        {/* REORDER MODE */}
-
-                        <span
-                          className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[7px] font-semibold ${
-                            item.reorderMode ===
-                            "AUTO"
-                              ? "bg-violet-50 text-violet-700"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {
-                            item.reorderMode
-                          }
-                        </span>
-
-                        {/* AVERAGE DAILY SALES */}
-
-                        {item.reorderMode ===
-                        "AUTO" ? (
-
-                          <p className="mt-1 text-[7px] text-slate-400">
-
-                            Avg.{" "}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[7px] font-semibold ${
+                              item.reorderMode ===
+                              "AUTO"
+                                ? "bg-violet-50 text-violet-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
                             {
-                              formatQuantity(
-                                item.averageDailySales,
-                              )
+                              item.reorderMode
                             }
-                            /day
+                          </span>
 
-                          </p>
-
-                        ) : null}
-
+                          {item.reorderMode ===
+                          "AUTO" ? (
+                            <span className="text-[7px] text-slate-400">
+                              Avg.{" "}
+                              {
+                                formatQuantity(
+                                  item.averageDailySales,
+                                )
+                              }
+                              /day
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
 
                       {/* =====================================
@@ -738,11 +856,9 @@ export default function LowStockAlertsPage() {
                       ===================================== */}
 
                       <td className="px-4 py-4 text-[10px] text-slate-600">
-
                         {
                           item.baseUnit
                         }
-
                       </td>
 
                       {/* =====================================
@@ -750,7 +866,6 @@ export default function LowStockAlertsPage() {
                       ===================================== */}
 
                       <td className="px-4 py-4">
-
                         <p
                           className={`text-[9px] ${
                             item.supplier ===
@@ -764,13 +879,9 @@ export default function LowStockAlertsPage() {
                           }
                         </p>
 
-                        {/* LEAD TIME */}
-
                         {item.reorderMode ===
                         "AUTO" ? (
-
                           <p className="mt-1 text-[7px] text-slate-400">
-
                             Lead time:{" "}
                             {
                               item.leadTimeDays
@@ -782,11 +893,8 @@ export default function LowStockAlertsPage() {
                                 ? ""
                                 : "s"
                             }
-
                           </p>
-
                         ) : null}
-
                       </td>
 
                       {/* =====================================
@@ -794,60 +902,62 @@ export default function LowStockAlertsPage() {
                       ===================================== */}
 
                       <td className="px-4 py-4">
-
                         <span
-                          className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[8px] font-medium ${
+                          className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[8px] font-semibold ${
                             item.status ===
                             "OUT_OF_STOCK"
                               ? "bg-rose-100 text-rose-700"
                               : "bg-amber-100 text-amber-700"
                           }`}
                         >
-
-                          {
-                            item.status ===
-                            "OUT_OF_STOCK"
-                              ? "Out of Stock"
-                              : "Low Stock"
-                          }
-
+                          {item.status ===
+                          "OUT_OF_STOCK"
+                            ? "Out of Stock"
+                            : "Low Stock"}
                         </span>
 
+                        {item.shortageQty >
+                        0 ? (
+                          <p className="mt-1 text-[7px] text-slate-400">
+                            Short by{" "}
+                            {
+                              formatQuantity(
+                                item.shortageQty,
+                              )
+                            }{" "}
+                            {
+                              item.baseUnit
+                            }
+                          </p>
+                        ) : null}
                       </td>
 
                       {/* =====================================
-                          ACTION
+                          ADMIN-ONLY ACTION
                       ===================================== */}
 
-                      <td className="px-4 py-4">
+                      {canManagePurchase ? (
+                        <td className="px-4 py-4">
+                          <button
+                            type="button"
+                            onClick={
+                              goToPurchase
+                            }
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 text-[8px] font-semibold text-teal-700 transition hover:bg-teal-100"
+                          >
+                            <RefreshCcw className="h-3 w-3" />
 
-                        <button
-                          type="button"
-                          onClick={
-                            goToPurchase
-                          }
-                          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 text-[8px] font-semibold text-teal-700 transition hover:bg-teal-100"
-                        >
-                          <RefreshCcw className="h-3 w-3" />
-
-                          Restock
-                        </button>
-
-                      </td>
-
+                            Restock
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
-
                   ),
                 )}
-
               </tbody>
-
             </table>
-
           </div>
-
         )}
-
       </section>
 
       {/* ===================================================
@@ -855,23 +965,14 @@ export default function LowStockAlertsPage() {
       =================================================== */}
 
       <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-
         <p className="text-[9px] leading-5 text-slate-500">
-
-          Manual mode uses the medicine&apos;s manually configured reorder level.
-
-          {" "}
-
-          Auto mode uses recent completed sales, supplier lead time and safety stock.
-
-          {" "}
-
-          If enough sales history is not available, the manual level is used as the safe fallback.
-
+          Manual mode uses the configured reorder level.{" "}
+          Auto mode uses recent completed sales, supplier lead
+          time and safety stock. If there is not enough sales
+          history, the manual reorder level is used as the
+          fallback.
         </p>
-
       </section>
-
     </div>
   );
 }
@@ -882,11 +983,8 @@ export default function LowStockAlertsPage() {
 
 function SummaryCard({
   label,
-
   value,
-
   className,
-
   valueClassName,
 }: {
   label: string;
@@ -901,21 +999,15 @@ function SummaryCard({
     <article
       className={`min-h-[88px] rounded-2xl border p-4 ${className}`}
     >
-
       <p className="text-[9px] font-medium text-slate-500">
-        {
-          label
-        }
+        {label}
       </p>
 
       <p
         className={`mt-2 text-[22px] font-semibold ${valueClassName}`}
       >
-        {
-          value
-        }
+        {value}
       </p>
-
     </article>
   );
 }
