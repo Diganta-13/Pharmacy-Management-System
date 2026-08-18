@@ -119,6 +119,12 @@ interface BatchRow
 interface CustomerRow
   extends RowDataPacket {
   id: number;
+
+  name: string;
+
+  status:
+    | "ACTIVE"
+    | "INACTIVE";
 }
 
 /* =========================================================
@@ -608,122 +614,149 @@ export async function POST(
        - otherwise create one
     ===================================================== */
 
-    let customerId:
-      number | null =
-      null;
+   let customerId:
+  number | null =
+  null;
 
-    const customerSnapshotName =
-      customerName ||
-      "Walk-in Customer";
+let customerSnapshotName =
+  customerName ||
+  "Walk-in Customer";
 
-    if (mobileNumber) {
-      const [customerRows] =
-        await connection.execute<
-          CustomerRow[]
-        >(
-          `
-            SELECT id
+if (mobileNumber) {
+  const [customerRows] =
+    await connection.execute<
+      CustomerRow[]
+    >(
+      `
+        SELECT
+          id,
+          name,
+          status
 
-            FROM customers
+        FROM customers
 
-            WHERE phone = ?
+        WHERE phone = ?
 
-            LIMIT 1
+        LIMIT 1
 
-            FOR UPDATE
-          `,
-          [
-            mobileNumber,
-          ],
-        );
+        FOR UPDATE
+      `,
+      [
+        mobileNumber,
+      ],
+    );
 
-      if (
-        customerRows.length >
-        0
-      ) {
-        customerId =
-          Number(
-            customerRows[0]
-              .id,
-          );
+  /* =====================================================
+     EXISTING CUSTOMER
+  ===================================================== */
 
-        /*
-         * Only update the name when cashier
-         * actually supplied a name.
-         */
-        if (customerName) {
-          await connection.execute(
-            `
-              UPDATE customers
+  if (
+    customerRows.length >
+    0
+  ) {
+    const existingCustomer =
+      customerRows[0];
 
-              SET
-                name = ?,
-                status = 'ACTIVE'
-
-              WHERE id = ?
-            `,
-            [
-              customerName,
-
-              customerId,
-            ],
-          );
-        }
-      } else {
-        const temporaryCode =
-          `TMP-${randomUUID()}`;
-
-        const [customerResult] =
-          await connection.execute<
-            ResultSetHeader
-          >(
-            `
-              INSERT INTO customers
-              (
-                customer_code,
-                name,
-                phone,
-                status
-              )
-              VALUES
-              (?, ?, ?, 'ACTIVE')
-            `,
-            [
-              temporaryCode,
-
-              customerSnapshotName,
-
-              mobileNumber,
-            ],
-          );
-
-        customerId =
-          customerResult.insertId;
-
-        const customerCode =
-          `CUS-${String(
-            customerId,
-          ).padStart(
-            3,
-            "0",
-          )}`;
-
-        await connection.execute(
-          `
-            UPDATE customers
-
-            SET customer_code = ?
-
-            WHERE id = ?
-          `,
-          [
-            customerCode,
-
-            customerId,
-          ],
-        );
-      }
+    /*
+     * Inactive means inactive.
+     * Billing must never silently reactivate.
+     */
+    if (
+      existingCustomer.status ===
+      "INACTIVE"
+    ) {
+      throw new Error(
+        "This customer is inactive. Activate the customer from Customer Management before making a new sale.",
+      );
     }
+
+    customerId =
+      Number(
+        existingCustomer.id,
+      );
+
+    /*
+     * Use customer master name.
+     *
+     * Billing screen should not silently
+     * modify customer master information.
+     */
+    customerSnapshotName =
+      existingCustomer.name;
+  }
+
+  /* =====================================================
+     NEW CUSTOMER
+  ===================================================== */
+
+  else {
+    /*
+     * A new phone number creates a
+     * registered customer, so name is required.
+     */
+    if (!customerName) {
+      throw new Error(
+        "Customer name is required when registering a new mobile number.",
+      );
+    }
+
+    const temporaryCode =
+      `TMP-${randomUUID()}`;
+
+    const [customerResult] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          INSERT INTO customers
+          (
+            customer_code,
+            name,
+            phone,
+            status
+          )
+          VALUES
+          (?, ?, ?, 'ACTIVE')
+        `,
+        [
+          temporaryCode,
+
+          customerName,
+
+          mobileNumber,
+        ],
+      );
+
+    customerId =
+      customerResult.insertId;
+
+    customerSnapshotName =
+      customerName;
+
+    const customerCode =
+      `CUS-${String(
+        customerId,
+      ).padStart(
+        3,
+        "0",
+      )}`;
+
+    await connection.execute(
+      `
+        UPDATE customers
+
+        SET customer_code = ?
+
+        WHERE id = ?
+      `,
+      [
+        customerCode,
+
+        customerId,
+      ],
+    );
+  }
+}
 
     /* =====================================================
        CREATE SALE HEADER FIRST
