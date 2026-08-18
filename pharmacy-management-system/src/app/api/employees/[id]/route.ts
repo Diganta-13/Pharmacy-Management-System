@@ -1,11 +1,31 @@
-import { NextResponse } from "next/server";
+import {
+  NextResponse,
+} from "next/server";
 
 import type {
   ResultSetHeader,
   RowDataPacket,
 } from "mysql2";
 
+import type {
+  PoolConnection,
+} from "mysql2/promise";
+
 import db from "@/lib/db";
+
+import {
+  requireAdmin,
+} from "@/lib/current-user";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
@@ -30,33 +50,78 @@ type UserStatus =
   | "INACTIVE"
   | "SUSPENDED";
 
-interface EmployeeLookupRow extends RowDataPacket {
+interface EmployeeLookupRow
+  extends RowDataPacket {
   employee_id: number;
 
   employee_code: string;
 
-  user_id: number | null;
+  user_id:
+    | number
+    | null;
 
-  employment_status: EmploymentStatus;
+  employment_status:
+    EmploymentStatus;
 
-  role_name: SystemRole | null;
+  role_name:
+    | SystemRole
+    | null;
 
-  user_status: UserStatus | null;
+  user_status:
+    | UserStatus
+    | null;
 }
 
-interface RoleLookupRow extends RowDataPacket {
+interface RoleLookupRow
+  extends RowDataPacket {
   id: number;
 
   name: SystemRole;
 }
 
-interface ExistingEmailRow extends RowDataPacket {
+interface ExistingEmailRow
+  extends RowDataPacket {
   id: number;
 }
 
-interface CountRow extends RowDataPacket {
-  total: number | string;
+interface CountRow
+  extends RowDataPacket {
+  total:
+    | number
+    | string;
 }
+
+type RouteContext = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+type EditEmployeeBody = {
+  name?: unknown;
+
+  email?: unknown;
+
+  phone?: unknown;
+
+  role?: unknown;
+
+  designation?: unknown;
+
+  shift?: unknown;
+
+  joiningDate?: unknown;
+
+  salary?: unknown;
+
+  address?: unknown;
+
+  emergencyContact?: unknown;
+};
+
+type StatusBody = {
+  status?: unknown;
+};
 
 /* =========================================================
    HELPERS
@@ -65,7 +130,8 @@ interface CountRow extends RowDataPacket {
 function cleanString(
   value: unknown,
 ) {
-  return typeof value === "string"
+  return typeof value ===
+    "string"
     ? value.trim()
     : "";
 }
@@ -117,7 +183,10 @@ function normalizeShift(
 
 function normalizeEmploymentStatus(
   value: unknown,
-): "ACTIVE" | "INACTIVE" | null {
+):
+  | "ACTIVE"
+  | "INACTIVE"
+  | null {
   const status =
     cleanString(
       value,
@@ -160,13 +229,29 @@ function isValidDateString(
     return false;
   }
 
+  const [
+    year,
+    month,
+    day,
+  ] =
+    value
+      .split("-")
+      .map(Number);
+
   const date =
     new Date(
-      `${value}T00:00:00`,
+      year,
+      month - 1,
+      day,
     );
 
-  return !Number.isNaN(
-    date.getTime(),
+  return (
+    date.getFullYear() ===
+      year &&
+    date.getMonth() ===
+      month - 1 &&
+    date.getDate() ===
+      day
   );
 }
 
@@ -174,10 +259,14 @@ function parseEmployeeId(
   value: string,
 ) {
   const id =
-    Number(value);
+    Number(
+      value,
+    );
 
   if (
-    !Number.isInteger(id) ||
+    !Number.isInteger(
+      id,
+    ) ||
     id <= 0
   ) {
     return null;
@@ -187,15 +276,134 @@ function parseEmployeeId(
 }
 
 /* =========================================================
+   AUTH ERROR RESPONSE
+========================================================= */
+
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Administrator access is required for employee management.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
+   SAFE ROLLBACK
+========================================================= */
+
+async function safeRollback(
+  connection: PoolConnection,
+) {
+  try {
+    await connection.rollback();
+  } catch (
+    rollbackError
+  ) {
+    console.error(
+      "Employee transaction rollback error:",
+      rollbackError,
+    );
+  }
+}
+
+/* =========================================================
    GET EMPLOYEE FOR UPDATE
+
+   FOR UPDATE locks employee row while
+   edit/status/resign transaction is running.
 ========================================================= */
 
 async function getEmployeeForUpdate(
-  connection: Awaited<
-    ReturnType<
-      typeof db.getConnection
-    >
-  >,
+  connection: PoolConnection,
+
   employeeId: number,
 ) {
   const [rows] =
@@ -204,45 +412,58 @@ async function getEmployeeForUpdate(
     >(
       `
         SELECT
-          e.id AS employee_id,
+          e.id
+            AS employee_id,
+
           e.employee_code,
+
           e.user_id,
+
           e.employment_status,
 
-          r.name AS role_name,
+          r.name
+            AS role_name,
 
-          u.status AS user_status
+          u.status
+            AS user_status
 
         FROM employees e
 
         LEFT JOIN users u
-          ON u.id = e.user_id
+          ON u.id =
+             e.user_id
 
         LEFT JOIN roles r
-          ON r.id = u.role_id
+          ON r.id =
+             u.role_id
 
-        WHERE e.id = ?
+        WHERE
+          e.id = ?
 
         LIMIT 1
 
         FOR UPDATE
       `,
-      [employeeId],
+      [
+        employeeId,
+      ],
     );
 
-  return rows[0] ?? null;
+  return (
+    rows[0] ??
+    null
+  );
 }
 
 /* =========================================================
-   CHECK IF EMPLOYEE IS LAST ACTIVE ADMIN
+   LAST ACTIVE ADMIN CHECK
+
+   System must always keep at least
+   one ACTIVE administrator.
 ========================================================= */
 
 async function isLastActiveAdmin(
-  connection: Awaited<
-    ReturnType<
-      typeof db.getConnection
-    >
-  >,
+  connection: PoolConnection,
 ) {
   const [rows] =
     await connection.execute<
@@ -255,46 +476,61 @@ async function isLastActiveAdmin(
         FROM employees e
 
         INNER JOIN users u
-          ON u.id = e.user_id
+          ON u.id =
+             e.user_id
 
         INNER JOIN roles r
-          ON r.id = u.role_id
+          ON r.id =
+             u.role_id
 
         WHERE
-          r.name = 'ADMIN'
+          r.name =
+            'ADMIN'
 
-          AND e.employment_status = 'ACTIVE'
+          AND
+          e.employment_status =
+            'ACTIVE'
 
-          AND u.status = 'ACTIVE'
+          AND
+          u.status =
+            'ACTIVE'
       `,
     );
 
   const total =
     Number(
-      rows[0]?.total ?? 0,
+      rows[0]?.total ??
+        0,
     );
 
-  return total <= 1;
+  return (
+    total <= 1
+  );
 }
 
 /* =========================================================
    PATCH
+   /api/employees/[id]
+
    EDIT EMPLOYEE
+
+   ADMIN ONLY
 ========================================================= */
 
 export async function PATCH(
   request: Request,
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  },
+
+  context: RouteContext,
 ) {
-  const { id } =
+  const {
+    id,
+  } =
     await context.params;
 
   const employeeId =
-    parseEmployeeId(id);
+    parseEmployeeId(
+      id,
+    );
 
   if (!employeeId) {
     return NextResponse.json(
@@ -317,8 +553,44 @@ export async function PATCH(
     false;
 
   try {
-    const body =
-      await request.json();
+    /* =====================================================
+       ADMIN AUTHORIZATION
+
+       Pharmacist cannot edit:
+       - roles
+       - salary
+       - shift
+       - employee details
+    ===================================================== */
+
+    await requireAdmin(
+      connection,
+    );
+
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body:
+      EditEmployeeBody;
+
+    try {
+      body =
+        (await request.json()) as
+          EditEmployeeBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     /* =====================================================
        NORMALIZE
@@ -375,7 +647,7 @@ export async function PATCH(
       );
 
     /* =====================================================
-       VALIDATION
+       NAME
     ===================================================== */
 
     if (!name) {
@@ -393,7 +665,8 @@ export async function PATCH(
     }
 
     if (
-      name.length > 120
+      name.length >
+      120
     ) {
       return NextResponse.json(
         {
@@ -408,9 +681,15 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       EMAIL
+    ===================================================== */
+
     if (
       !email ||
-      !isValidEmail(email)
+      !isValidEmail(
+        email,
+      )
     ) {
       return NextResponse.json(
         {
@@ -424,6 +703,27 @@ export async function PATCH(
         },
       );
     }
+
+    if (
+      email.length >
+      150
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Employee email is too long.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       PHONE
+    ===================================================== */
 
     if (
       !isValidBangladeshPhone(
@@ -443,6 +743,10 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       ROLE
+    ===================================================== */
+
     if (!role) {
       return NextResponse.json(
         {
@@ -457,6 +761,10 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       SHIFT
+    ===================================================== */
+
     if (!shift) {
       return NextResponse.json(
         {
@@ -470,6 +778,10 @@ export async function PATCH(
         },
       );
     }
+
+    /* =====================================================
+       JOINING DATE
+    ===================================================== */
 
     if (
       !isValidDateString(
@@ -488,6 +800,10 @@ export async function PATCH(
         },
       );
     }
+
+    /* =====================================================
+       SALARY
+    ===================================================== */
 
     if (
       !Number.isFinite(
@@ -510,6 +826,10 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       DESIGNATION
+    ===================================================== */
+
     if (
       designation.length >
       100
@@ -527,8 +847,13 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       ADDRESS
+    ===================================================== */
+
     if (
-      address.length > 255
+      address.length >
+      255
     ) {
       return NextResponse.json(
         {
@@ -542,6 +867,10 @@ export async function PATCH(
         },
       );
     }
+
+    /* =====================================================
+       EMERGENCY CONTACT
+    ===================================================== */
 
     if (
       emergencyContact &&
@@ -563,7 +892,7 @@ export async function PATCH(
     }
 
     /* =====================================================
-       TRANSACTION
+       BEGIN TRANSACTION
     ===================================================== */
 
     await connection.beginTransaction();
@@ -571,9 +900,14 @@ export async function PATCH(
     transactionStarted =
       true;
 
+    /* =====================================================
+       LOCK EMPLOYEE
+    ===================================================== */
+
     const employee =
       await getEmployeeForUpdate(
         connection,
+
         employeeId,
       );
 
@@ -595,6 +929,10 @@ export async function PATCH(
         },
       );
     }
+
+    /* =====================================================
+       RESIGNED EMPLOYEE PROTECTION
+    ===================================================== */
 
     if (
       employee.employment_status ===
@@ -618,7 +956,13 @@ export async function PATCH(
       );
     }
 
-    if (!employee.user_id) {
+    /* =====================================================
+       USER ACCOUNT REQUIRED
+    ===================================================== */
+
+    if (
+      !employee.user_id
+    ) {
       await connection.rollback();
 
       transactionStarted =
@@ -641,26 +985,33 @@ export async function PATCH(
        ROLE LOOKUP
     ===================================================== */
 
-    const [roleRows] =
+    const [
+      roleRows,
+    ] =
       await connection.execute<
         RoleLookupRow[]
       >(
         `
           SELECT
             id,
+
             name
 
           FROM roles
 
-          WHERE name = ?
+          WHERE
+            name = ?
 
           LIMIT 1
         `,
-        [role],
+        [
+          role,
+        ],
       );
 
     if (
-      roleRows.length === 0
+      roleRows.length ===
+      0
     ) {
       await connection.rollback();
 
@@ -686,16 +1037,22 @@ export async function PATCH(
       );
 
     /* =====================================================
-       PROTECT LAST ACTIVE ADMIN
+       LAST ACTIVE ADMIN PROTECTION
 
-       An active last admin cannot be changed
-       into PHARMACIST.
+       Example:
+
+       Admin A = only active Admin
+
+       Admin A → Pharmacist ❌
+
+       This prevents system lockout.
     ===================================================== */
 
     if (
       employee.role_name ===
         "ADMIN" &&
-      role !== "ADMIN" &&
+      role !==
+        "ADMIN" &&
       employee.employment_status ===
         "ACTIVE" &&
       employee.user_status ===
@@ -706,7 +1063,9 @@ export async function PATCH(
           connection,
         );
 
-      if (lastAdmin) {
+      if (
+        lastAdmin
+      ) {
         await connection.rollback();
 
         transactionStarted =
@@ -727,22 +1086,26 @@ export async function PATCH(
     }
 
     /* =====================================================
-       DUPLICATE EMAIL CHECK
+       DUPLICATE EMAIL
     ===================================================== */
 
-    const [existingEmailRows] =
+    const [
+      existingEmailRows,
+    ] =
       await connection.execute<
         ExistingEmailRow[]
       >(
         `
-          SELECT id
+          SELECT
+            id
 
           FROM users
 
           WHERE
-            email = ?
+            LOWER(email) = ?
 
-            AND id <> ?
+            AND
+            id <> ?
 
           LIMIT 1
 
@@ -750,6 +1113,7 @@ export async function PATCH(
         `,
         [
           email,
+
           employee.user_id,
         ],
       );
@@ -778,93 +1142,167 @@ export async function PATCH(
 
     /* =====================================================
        UPDATE USER
+
+       Role + login identity information
     ===================================================== */
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE users
+    const [
+      userUpdateResult,
+    ] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          UPDATE users
 
-        SET
-          role_id = ?,
-          full_name = ?,
-          email = ?,
-          phone = ?
+          SET
+            role_id = ?,
 
-        WHERE id = ?
-      `,
-      [
-        newRoleId,
-        name,
-        email,
-        phone,
-        employee.user_id,
-      ],
-    );
+            full_name = ?,
+
+            email = ?,
+
+            phone = ?
+
+          WHERE
+            id = ?
+        `,
+        [
+          newRoleId,
+
+          name,
+
+          email,
+
+          phone,
+
+          employee.user_id,
+        ],
+      );
+
+    if (
+      userUpdateResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "EMPLOYEE_USER_UPDATE_FAILED",
+      );
+    }
 
     /* =====================================================
        UPDATE EMPLOYEE
     ===================================================== */
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE employees
+    const [
+      employeeUpdateResult,
+    ] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          UPDATE employees
 
-        SET
-          designation = ?,
-          shift = ?,
-          joining_date = ?,
-          salary = ?,
-          address = ?,
-          emergency_contact = ?
+          SET
+            designation = ?,
 
-        WHERE id = ?
-      `,
-      [
-        designation ||
-          null,
+            shift = ?,
 
-        shift,
+            joining_date = ?,
 
-        joiningDate,
+            salary = ?,
 
-        salary,
+            address = ?,
 
-        address ||
-          null,
+            emergency_contact = ?
 
-        emergencyContact ||
-          null,
+          WHERE
+            id = ?
+        `,
+        [
+          designation ||
+            null,
 
-        employeeId,
-      ],
-    );
+          shift,
+
+          joiningDate,
+
+          salary,
+
+          address ||
+            null,
+
+          emergencyContact ||
+            null,
+
+          employeeId,
+        ],
+      );
+
+    if (
+      employeeUpdateResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "EMPLOYEE_UPDATE_FAILED",
+      );
+    }
+
+    /* =====================================================
+       COMMIT
+    ===================================================== */
 
     await connection.commit();
 
     transactionStarted =
       false;
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      message:
-        "Employee updated successfully.",
-    });
+        message:
+          "Employee updated successfully.",
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
+    /* =====================================================
+       ROLLBACK
+    ===================================================== */
+
     if (
       transactionStarted
     ) {
-      await connection.rollback();
+      await safeRollback(
+        connection,
+      );
     }
 
     console.error(
       "PATCH employee error:",
       error,
     );
+
+    /* =====================================================
+       AUTH
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (
+      authResponse
+    ) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       MYSQL DUPLICATE
+    ===================================================== */
 
     const mysqlError =
       error as {
@@ -888,14 +1326,39 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       UPDATE FAILURE
+    ===================================================== */
+
+    if (
+      error instanceof
+        Error &&
+      (
+        error.message ===
+          "EMPLOYEE_USER_UPDATE_FAILED" ||
+        error.message ===
+          "EMPLOYEE_UPDATE_FAILED"
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Employee information could not be updated.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to update employee.",
+          "Failed to update employee.",
       },
       {
         status: 500,
@@ -908,22 +1371,27 @@ export async function PATCH(
 
 /* =========================================================
    PUT
+   /api/employees/[id]
+
    ACTIVE ↔ INACTIVE
+
+   ADMIN ONLY
 ========================================================= */
 
 export async function PUT(
   request: Request,
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  },
+
+  context: RouteContext,
 ) {
-  const { id } =
+  const {
+    id,
+  } =
     await context.params;
 
   const employeeId =
-    parseEmployeeId(id);
+    parseEmployeeId(
+      id,
+    );
 
   if (!employeeId) {
     return NextResponse.json(
@@ -939,28 +1407,6 @@ export async function PUT(
     );
   }
 
-  const body =
-    await request.json();
-
-  const status =
-    normalizeEmploymentStatus(
-      body.status,
-    );
-
-  if (!status) {
-    return NextResponse.json(
-      {
-        success: false,
-
-        message:
-          "Status must be ACTIVE or INACTIVE.",
-      },
-      {
-        status: 400,
-      },
-    );
-  }
-
   const connection =
     await db.getConnection();
 
@@ -968,14 +1414,75 @@ export async function PUT(
     false;
 
   try {
+    /* =====================================================
+       ADMIN AUTHORIZATION
+    ===================================================== */
+
+    await requireAdmin(
+      connection,
+    );
+
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body:
+      StatusBody;
+
+    try {
+      body =
+        (await request.json()) as
+          StatusBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const status =
+      normalizeEmploymentStatus(
+        body.status,
+      );
+
+    if (!status) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Status must be ACTIVE or INACTIVE.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
+
     await connection.beginTransaction();
 
     transactionStarted =
       true;
 
+    /* =====================================================
+       LOCK EMPLOYEE
+    ===================================================== */
+
     const employee =
       await getEmployeeForUpdate(
         connection,
+
         employeeId,
       );
 
@@ -997,6 +1504,10 @@ export async function PUT(
         },
       );
     }
+
+    /* =====================================================
+       RESIGNED EMPLOYEE PROTECTION
+    ===================================================== */
 
     if (
       employee.employment_status ===
@@ -1020,7 +1531,9 @@ export async function PUT(
       );
     }
 
-    if (!employee.user_id) {
+    if (
+      !employee.user_id
+    ) {
       await connection.rollback();
 
       transactionStarted =
@@ -1041,6 +1554,8 @@ export async function PUT(
 
     /* =====================================================
        LAST ACTIVE ADMIN PROTECTION
+
+       Last active admin cannot become inactive.
     ===================================================== */
 
     if (
@@ -1058,7 +1573,9 @@ export async function PUT(
           connection,
         );
 
-      if (lastAdmin) {
+      if (
+        lastAdmin
+      ) {
         await connection.rollback();
 
         transactionStarted =
@@ -1079,59 +1596,111 @@ export async function PUT(
     }
 
     /* =====================================================
-       SYNC EMPLOYEE + USER STATUS
+       SYNC EMPLOYEE STATUS
     ===================================================== */
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE employees
+    const [
+      employeeResult,
+    ] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          UPDATE employees
 
-        SET employment_status = ?
+          SET
+            employment_status = ?
 
-        WHERE id = ?
-      `,
-      [
-        status,
-        employeeId,
-      ],
-    );
+          WHERE
+            id = ?
+        `,
+        [
+          status,
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE users
+          employeeId,
+        ],
+      );
 
-        SET status = ?
+    if (
+      employeeResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "EMPLOYEE_STATUS_UPDATE_FAILED",
+      );
+    }
 
-        WHERE id = ?
-      `,
-      [
-        status,
-        employee.user_id,
-      ],
-    );
+    /* =====================================================
+       SYNC USER LOGIN STATUS
+
+       Employee inactive
+       → login account inactive
+
+       Employee active
+       → login account active
+    ===================================================== */
+
+    const [
+      userResult,
+    ] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          UPDATE users
+
+          SET
+            status = ?
+
+          WHERE
+            id = ?
+        `,
+        [
+          status,
+
+          employee.user_id,
+        ],
+      );
+
+    if (
+      userResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "USER_STATUS_UPDATE_FAILED",
+      );
+    }
+
+    /* =====================================================
+       COMMIT
+    ===================================================== */
 
     await connection.commit();
 
     transactionStarted =
       false;
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      message:
-        status === "ACTIVE"
-          ? "Employee activated successfully."
-          : "Employee deactivated successfully.",
-    });
+        message:
+          status ===
+          "ACTIVE"
+            ? "Employee activated successfully."
+            : "Employee deactivated successfully.",
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
     if (
       transactionStarted
     ) {
-      await connection.rollback();
+      await safeRollback(
+        connection,
+      );
     }
 
     console.error(
@@ -1139,14 +1708,50 @@ export async function PUT(
       error,
     );
 
+    /* =====================================================
+       AUTH
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (
+      authResponse
+    ) {
+      return authResponse;
+    }
+
+    if (
+      error instanceof
+        Error &&
+      (
+        error.message ===
+          "EMPLOYEE_STATUS_UPDATE_FAILED" ||
+        error.message ===
+          "USER_STATUS_UPDATE_FAILED"
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Employee status could not be changed.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to change employee status.",
+          "Failed to change employee status.",
       },
       {
         status: 500,
@@ -1159,22 +1764,36 @@ export async function PUT(
 
 /* =========================================================
    DELETE
+   /api/employees/[id]
+
    SOFT DELETE → RESIGNED
+
+   ADMIN ONLY
+
+   IMPORTANT:
+   No physical DELETE is performed.
+
+   employees.employment_status
+   → RESIGNED
+
+   users.status
+   → INACTIVE
 ========================================================= */
 
 export async function DELETE(
   _request: Request,
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  },
+
+  context: RouteContext,
 ) {
-  const { id } =
+  const {
+    id,
+  } =
     await context.params;
 
   const employeeId =
-    parseEmployeeId(id);
+    parseEmployeeId(
+      id,
+    );
 
   if (!employeeId) {
     return NextResponse.json(
@@ -1197,14 +1816,31 @@ export async function DELETE(
     false;
 
   try {
+    /* =====================================================
+       ADMIN AUTHORIZATION
+    ===================================================== */
+
+    await requireAdmin(
+      connection,
+    );
+
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
+
     await connection.beginTransaction();
 
     transactionStarted =
       true;
 
+    /* =====================================================
+       LOCK EMPLOYEE
+    ===================================================== */
+
     const employee =
       await getEmployeeForUpdate(
         connection,
+
         employeeId,
       );
 
@@ -1227,21 +1863,30 @@ export async function DELETE(
       );
     }
 
+    /* =====================================================
+       ALREADY RESIGNED
+    ===================================================== */
+
     if (
       employee.employment_status ===
       "RESIGNED"
     ) {
-      await connection.commit();
+      await connection.rollback();
 
       transactionStarted =
         false;
 
-      return NextResponse.json({
-        success: true,
+      return NextResponse.json(
+        {
+          success: true,
 
-        message:
-          "Employee is already resigned.",
-      });
+          message:
+            "Employee is already resigned.",
+        },
+        {
+          status: 200,
+        },
+      );
     }
 
     /* =====================================================
@@ -1261,7 +1906,9 @@ export async function DELETE(
           connection,
         );
 
-      if (lastAdmin) {
+      if (
+        lastAdmin
+      ) {
         await connection.rollback();
 
         transactionStarted =
@@ -1283,59 +1930,109 @@ export async function DELETE(
 
     /* =====================================================
        EMPLOYEE → RESIGNED
-       USER → INACTIVE
 
-       Nothing is hard deleted.
+       This is soft delete.
+       Employee history remains in database.
     ===================================================== */
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE employees
-
-        SET employment_status = 'RESIGNED'
-
-        WHERE id = ?
-      `,
-      [employeeId],
-    );
-
-    if (
-      employee.user_id
-    ) {
+    const [
+      employeeResult,
+    ] =
       await connection.execute<
         ResultSetHeader
       >(
         `
-          UPDATE users
+          UPDATE employees
 
-          SET status = 'INACTIVE'
+          SET
+            employment_status =
+              'RESIGNED'
 
-          WHERE id = ?
+          WHERE
+            id = ?
         `,
         [
-          employee.user_id,
+          employeeId,
         ],
       );
+
+    if (
+      employeeResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "EMPLOYEE_RESIGN_FAILED",
+      );
     }
+
+    /* =====================================================
+       USER → INACTIVE
+
+       Resigned employee must no longer
+       be able to log into the system.
+    ===================================================== */
+
+    if (
+      employee.user_id
+    ) {
+      const [
+        userResult,
+      ] =
+        await connection.execute<
+          ResultSetHeader
+        >(
+          `
+            UPDATE users
+
+            SET
+              status =
+                'INACTIVE'
+
+            WHERE
+              id = ?
+          `,
+          [
+            employee.user_id,
+          ],
+        );
+
+      if (
+        userResult.affectedRows !==
+        1
+      ) {
+        throw new Error(
+          "EMPLOYEE_USER_DEACTIVATION_FAILED",
+        );
+      }
+    }
+
+    /* =====================================================
+       COMMIT
+    ===================================================== */
 
     await connection.commit();
 
     transactionStarted =
       false;
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      message:
-        "Employee resigned successfully.",
-    });
+        message:
+          "Employee resigned successfully.",
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
     if (
       transactionStarted
     ) {
-      await connection.rollback();
+      await safeRollback(
+        connection,
+      );
     }
 
     console.error(
@@ -1343,14 +2040,50 @@ export async function DELETE(
       error,
     );
 
+    /* =====================================================
+       AUTH
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (
+      authResponse
+    ) {
+      return authResponse;
+    }
+
+    if (
+      error instanceof
+        Error &&
+      (
+        error.message ===
+          "EMPLOYEE_RESIGN_FAILED" ||
+        error.message ===
+          "EMPLOYEE_USER_DEACTIVATION_FAILED"
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Employee could not be resigned.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to resign employee.",
+          "Failed to resign employee.",
       },
       {
         status: 500,

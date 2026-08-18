@@ -5,13 +5,23 @@ import {
 import db from "@/lib/db";
 
 import {
-  getCurrentUserId,
+  requireAdmin,
 } from "@/lib/current-user";
 
 import {
   PurchaseServiceError,
   receivePurchaseByNo,
 } from "@/lib/purchase-service";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
@@ -24,7 +34,119 @@ type RouteContext = {
 };
 
 /* =========================================================
-   RECEIVE
+   AUTH ERROR RESPONSE
+========================================================= */
+
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Administrator access is required to receive purchases.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
+   POST
+   /api/purchases/[id]/receive
+
+   ADMIN ONLY
+
+   Responsibilities:
+   - Verify authenticated administrator
+   - Validate purchase number
+   - Receive pending purchase
+   - Create/update batches
+   - Update stock
+   - Create stock movement
+   - Save actual Admin user as received_by
 ========================================================= */
 
 export async function POST(
@@ -35,18 +157,66 @@ export async function POST(
   const connection =
     await db.getConnection();
 
+  let transactionStarted =
+    false;
+
   try {
+    /* =====================================================
+       ADMIN AUTHORIZATION
+
+       Do this before starting inventory mutation.
+    ===================================================== */
+
+    const currentAdmin =
+      await requireAdmin(
+        connection,
+      );
+
+    /* =====================================================
+       ROUTE PARAM
+    ===================================================== */
+
     const {
       id,
     } =
       await context.params;
 
-    const purchaseNo =
-      decodeURIComponent(
-        id,
-      )
-        .trim()
-        .toUpperCase();
+    /* =====================================================
+       NORMALIZE PURCHASE NUMBER
+    ===================================================== */
+
+    let purchaseNo =
+      "";
+
+    try {
+      purchaseNo =
+        decodeURIComponent(
+          id,
+        )
+          .trim()
+          .toUpperCase();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid purchase number.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       VALIDATE PURCHASE NUMBER
+
+       Expected:
+       PUR-2026-001
+       PUR-2026-12
+       etc.
+    ===================================================== */
 
     if (
       !/^PUR-\d{4}-\d+$/i.test(
@@ -66,12 +236,25 @@ export async function POST(
       );
     }
 
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
+
     await connection.beginTransaction();
 
-    const userId =
-      await getCurrentUserId(
-        connection,
-      );
+    transactionStarted =
+      true;
+
+    /* =====================================================
+       RECEIVE PURCHASE
+
+       purchase-service handles the actual
+       purchase receiving workflow.
+
+       Important:
+       currentAdmin.userId is the REAL
+       authenticated administrator.
+    ===================================================== */
 
     const result =
       await receivePurchaseByNo(
@@ -79,27 +262,98 @@ export async function POST(
 
         purchaseNo,
 
-        userId,
+        currentAdmin.userId,
       );
+
+    /* =====================================================
+       COMMIT
+    ===================================================== */
 
     await connection.commit();
 
-    return NextResponse.json({
-      success: true,
+    transactionStarted =
+      false;
 
-      message:
-        "Purchase received successfully.",
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
-      data:
-        result,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+
+        message:
+          "Purchase received successfully.",
+
+        data: {
+          ...result,
+
+          receivedBy: {
+            userId:
+              currentAdmin.userId,
+
+            fullName:
+              currentAdmin.fullName,
+
+            email:
+              currentAdmin.email,
+          },
+        },
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
-    await connection.rollback();
+    /* =====================================================
+       ROLLBACK
+
+       Only rollback if transaction actually started.
+    ===================================================== */
+
+    if (
+      transactionStarted
+    ) {
+      try {
+        await connection.rollback();
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Receive purchase rollback error:",
+          rollbackError,
+        );
+      }
+    }
 
     console.error(
       "Receive purchase error:",
       error,
     );
+
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       PURCHASE BUSINESS ERRORS
+
+       Examples:
+       - purchase not found
+       - already received
+       - invalid batch
+       - invalid item
+       - stock-related receive error
+    ===================================================== */
 
     if (
       error instanceof
@@ -122,23 +376,9 @@ export async function POST(
       );
     }
 
-    if (
-      error instanceof Error &&
-      error.message ===
-        "CURRENT_USER_NOT_FOUND"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-
-          message:
-            "Development admin user is missing.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
 
     return NextResponse.json(
       {

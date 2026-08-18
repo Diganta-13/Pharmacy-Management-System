@@ -8,6 +8,20 @@ import type {
 
 import db from "@/lib/db";
 
+import {
+  requireAdmin,
+} from "@/lib/current-user";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -44,6 +58,16 @@ interface InventorySettingRow
     | null;
 }
 
+type RouteContext = {
+  params: Promise<{
+    id: string;
+  }>;
+};
+
+type ReorderRequestBody = {
+  reorderMode?: unknown;
+};
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -76,18 +100,122 @@ function parseReorderMode(
 }
 
 /* =========================================================
+   AUTH ERROR RESPONSE
+========================================================= */
+
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Administrator access is required to change reorder settings.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
    PATCH
-   CHANGE MANUAL / AUTO MODE
+   /api/reorder/[id]
+
+   ADMIN ONLY
+
+   Changes:
+   MANUAL ↔ AUTO
+
+   Example:
+   /api/reorder/MED-001
 ========================================================= */
 
 export async function PATCH(
   request: Request,
 
-  context: {
-    params: Promise<{
-      id: string;
-    }>;
-  },
+  context: RouteContext,
 ) {
   const connection =
     await db.getConnection();
@@ -96,15 +224,54 @@ export async function PATCH(
     false;
 
   try {
-    const { id } =
+    /* =====================================================
+       ADMIN AUTHORIZATION
+
+       Pharmacist may VIEW low-stock information,
+       but cannot change reorder configuration.
+    ===================================================== */
+
+    const currentAdmin =
+      await requireAdmin(
+        connection,
+      );
+
+    /* =====================================================
+       ROUTE PARAM
+    ===================================================== */
+
+    const {
+      id,
+    } =
       await context.params;
 
-    const medicineCode =
-      cleanString(
-        decodeURIComponent(
-          id,
-        ),
-      ).toUpperCase();
+    let medicineCode =
+      "";
+
+    try {
+      medicineCode =
+        cleanString(
+          decodeURIComponent(
+            id,
+          ),
+        ).toUpperCase();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid medicine ID.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       VALIDATE MEDICINE CODE
+    ===================================================== */
 
     if (
       !/^MED-\d+$/i.test(
@@ -124,8 +291,34 @@ export async function PATCH(
       );
     }
 
-    const body =
-      await request.json();
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body:
+      ReorderRequestBody;
+
+    try {
+      body =
+        (await request.json()) as
+          ReorderRequestBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       REORDER MODE
+    ===================================================== */
 
     const reorderMode =
       parseReorderMode(
@@ -146,6 +339,10 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
+
     await connection.beginTransaction();
 
     transactionStarted =
@@ -155,7 +352,9 @@ export async function PATCH(
        FIND + LOCK MEDICINE
     ===================================================== */
 
-    const [medicineRows] =
+    const [
+      medicineRows,
+    ] =
       await connection.execute<
         MedicineRow[]
       >(
@@ -181,6 +380,10 @@ export async function PATCH(
           medicineCode,
         ],
       );
+
+    /* =====================================================
+       MEDICINE NOT FOUND
+    ===================================================== */
 
     if (
       medicineRows.length ===
@@ -209,6 +412,9 @@ export async function PATCH(
 
     /* =====================================================
        ENSURE SETTINGS ROW EXISTS
+
+       New medicines may not yet have an
+       inventory-settings record.
     ===================================================== */
 
     await connection.execute(
@@ -216,28 +422,43 @@ export async function PATCH(
         INSERT INTO medicine_inventory_settings
         (
           medicine_id,
+
           reorder_mode,
+
           manual_reorder_level_base,
+
           auto_reorder_level_base,
+
           safety_stock_base,
+
           sales_lookback_days,
+
           minimum_history_days,
+
           last_average_daily_sales
         )
 
         VALUES
         (
           ?,
+
           'MANUAL',
+
           0,
+
           0,
+
           0,
+
           30,
+
           7,
+
           0
         )
 
         ON DUPLICATE KEY UPDATE
+
           medicine_id =
             VALUES(
               medicine_id
@@ -249,10 +470,12 @@ export async function PATCH(
     );
 
     /* =====================================================
-       LOCK SETTINGS
+       LOCK SETTINGS ROW
     ===================================================== */
 
-    const [settingRows] =
+    const [
+      settingRows,
+    ] =
       await connection.execute<
         InventorySettingRow[]
       >(
@@ -287,20 +510,35 @@ export async function PATCH(
     const currentSetting =
       settingRows[0];
 
-    /*
-     * Safety:
-     *
-     * If AUTO is enabled before a calculation has
-     * ever been performed, use manual level as
-     * initial auto level.
-     *
-     * This prevents AUTO = 0 accidentally.
-     */
+    if (!currentSetting) {
+      throw new Error(
+        "INVENTORY_SETTING_NOT_FOUND",
+      );
+    }
+
+    /* =====================================================
+       AUTO MODE SAFETY
+
+       Example:
+
+       Current manual reorder level:
+       30 units
+
+       Admin enables AUTO for first time.
+
+       If auto calculation has never run,
+       auto reorder level would otherwise
+       remain 0.
+
+       Therefore:
+       initial AUTO level = manual level.
+    ===================================================== */
 
     if (
-      reorderMode === "AUTO" &&
+      reorderMode ===
+        "AUTO" &&
       !currentSetting
-        ?.last_calculated_at
+        .last_calculated_at
     ) {
       await connection.execute(
         `
@@ -321,6 +559,10 @@ export async function PATCH(
         ],
       );
     } else {
+      /* ===================================================
+         NORMAL MODE CHANGE
+      =================================================== */
+
       await connection.execute(
         `
           UPDATE medicine_inventory_settings
@@ -340,10 +582,12 @@ export async function PATCH(
     }
 
     /* =====================================================
-       RETURN CURRENT EFFECTIVE LEVEL
+       LOAD UPDATED SETTINGS
     ===================================================== */
 
-    const [updatedRows] =
+    const [
+      updatedRows,
+    ] =
       await connection.execute<
         InventorySettingRow[]
       >(
@@ -376,67 +620,137 @@ export async function PATCH(
     const updated =
       updatedRows[0];
 
+    if (!updated) {
+      throw new Error(
+        "UPDATED_INVENTORY_SETTING_NOT_FOUND",
+      );
+    }
+
+    /* =====================================================
+       NORMALIZE LEVELS
+    ===================================================== */
+
     const manualLevel =
       Number(
         updated
-          ?.manual_reorder_level_base ??
+          .manual_reorder_level_base ??
           0,
       );
 
     const autoLevel =
       Number(
         updated
-          ?.auto_reorder_level_base ??
+          .auto_reorder_level_base ??
           0,
       );
 
+    const safeManualLevel =
+      Number.isFinite(
+        manualLevel,
+      )
+        ? Math.max(
+            0,
+            manualLevel,
+          )
+        : 0;
+
+    const safeAutoLevel =
+      Number.isFinite(
+        autoLevel,
+      )
+        ? Math.max(
+            0,
+            autoLevel,
+          )
+        : 0;
+
+    /* =====================================================
+       EFFECTIVE LEVEL
+    ===================================================== */
+
     const effectiveLevel =
-      reorderMode === "AUTO"
-        ? autoLevel
-        : manualLevel;
+      reorderMode ===
+      "AUTO"
+        ? safeAutoLevel
+        : safeManualLevel;
+
+    /* =====================================================
+       COMMIT
+    ===================================================== */
 
     await connection.commit();
 
     transactionStarted =
       false;
 
-    return NextResponse.json({
-      success: true,
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
-      message:
-        reorderMode === "AUTO"
-          ? "Auto reorder mode enabled."
-          : "Manual reorder mode enabled.",
+    return NextResponse.json(
+      {
+        success: true,
 
-      data: {
-        medicineCode:
-          medicine.medicine_code,
+        message:
+          reorderMode ===
+          "AUTO"
+            ? "Auto reorder mode enabled."
+            : "Manual reorder mode enabled.",
 
-        medicineName:
-          medicine.medicine_name,
+        data: {
+          medicineCode:
+            medicine.medicine_code,
 
-        reorderMode,
+          medicineName:
+            medicine.medicine_name,
 
-        manualReorderLevelBase:
-          manualLevel,
+          reorderMode,
 
-        autoReorderLevelBase:
-          autoLevel,
+          manualReorderLevelBase:
+            safeManualLevel,
 
-        effectiveReorderLevelBase:
-          effectiveLevel,
+          autoReorderLevelBase:
+            safeAutoLevel,
 
-        lastCalculatedAt:
-          updated
-            ?.last_calculated_at ??
-          null,
+          effectiveReorderLevelBase:
+            effectiveLevel,
+
+          lastCalculatedAt:
+            updated
+              .last_calculated_at ??
+            null,
+
+          updatedBy: {
+            userId:
+              currentAdmin.userId,
+
+            fullName:
+              currentAdmin.fullName,
+          },
+        },
       },
-    });
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
+    /* =====================================================
+       ROLLBACK
+    ===================================================== */
+
     if (
       transactionStarted
     ) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Reorder mode rollback error:",
+          rollbackError,
+        );
+      }
     }
 
     console.error(
@@ -444,14 +758,56 @@ export async function PATCH(
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       SETTINGS ERROR
+    ===================================================== */
+
+    if (
+      error instanceof
+        Error &&
+      (
+        error.message ===
+          "INVENTORY_SETTING_NOT_FOUND" ||
+        error.message ===
+          "UPDATED_INVENTORY_SETTING_NOT_FOUND"
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Medicine inventory settings could not be loaded.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to update reorder mode.",
+          "Failed to update reorder mode.",
       },
       {
         status: 500,

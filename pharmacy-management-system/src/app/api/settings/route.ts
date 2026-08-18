@@ -1,15 +1,31 @@
-import { NextResponse } from "next/server";
+import {
+  NextResponse,
+} from "next/server";
 
 import type {
   ResultSetHeader,
   RowDataPacket,
 } from "mysql2";
 
+import type {
+  PoolConnection,
+} from "mysql2/promise";
+
 import db from "@/lib/db";
 
 import {
-  getCurrentUserId,
+  requireAdmin,
 } from "@/lib/current-user";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
@@ -67,6 +83,20 @@ interface RoleRow
     | null;
 }
 
+type SettingsRequestBody = {
+  pharmacyName?: unknown;
+
+  address?: unknown;
+
+  phone?: unknown;
+
+  email?: unknown;
+
+  vatEnabled?: unknown;
+
+  vatRate?: unknown;
+};
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -105,27 +135,242 @@ function formatRoleName(
 }
 
 /* =========================================================
-   GET SETTINGS
+   AUTH ERROR RESPONSE
 ========================================================= */
 
-export async function GET() {
-  try {
-    const [settingsRows] =
-      await db.execute<
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Administrator access is required to manage system settings.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
+   LOAD SETTINGS
+========================================================= */
+
+async function loadSettings(
+  connection: PoolConnection,
+) {
+  /* =======================================================
+     SETTINGS ROW
+  ======================================================= */
+
+  const [
+    settingsRows,
+  ] =
+    await connection.execute<
+      SettingsRow[]
+    >(
+      `
+        SELECT
+          id,
+
+          pharmacy_name,
+
+          address,
+
+          phone,
+
+          email,
+
+          vat_enabled,
+
+          default_vat_rate,
+
+          invoice_prefix,
+
+          purchase_prefix,
+
+          currency_code,
+
+          invoice_footer,
+
+          DATE_FORMAT(
+            updated_at,
+            '%Y-%m-%dT%H:%i:%s'
+          ) AS updated_at
+
+        FROM system_settings
+
+        WHERE
+          id = 1
+
+        LIMIT 1
+      `,
+    );
+
+  let settings =
+    settingsRows[0];
+
+  /* =======================================================
+     SAFETY FALLBACK
+
+     system_settings is designed as
+     a single-row configuration table.
+
+     If row 1 is missing, recreate
+     safe project defaults.
+  ======================================================= */
+
+  if (!settings) {
+    await connection.execute<
+      ResultSetHeader
+    >(
+      `
+        INSERT INTO system_settings
+        (
+          id,
+
+          pharmacy_name,
+
+          vat_enabled,
+
+          default_vat_rate,
+
+          invoice_prefix,
+
+          purchase_prefix,
+
+          currency_code
+        )
+
+        VALUES
+        (
+          1,
+
+          'Green Life Pharmacy',
+
+          FALSE,
+
+          0,
+
+          'INV',
+
+          'PUR',
+
+          'BDT'
+        )
+      `,
+    );
+
+    const [
+      newRows,
+    ] =
+      await connection.execute<
         SettingsRow[]
       >(
         `
           SELECT
             id,
+
             pharmacy_name,
+
             address,
+
             phone,
+
             email,
+
             vat_enabled,
+
             default_vat_rate,
+
             invoice_prefix,
+
             purchase_prefix,
+
             currency_code,
+
             invoice_footer,
 
             DATE_FORMAT(
@@ -135,204 +380,236 @@ export async function GET() {
 
           FROM system_settings
 
-          WHERE id = 1
+          WHERE
+            id = 1
 
           LIMIT 1
         `,
       );
 
-    /*
-     * Roles are shown dynamically.
-     * Current roles table has no
-     * ACTIVE / INACTIVE column.
-     */
-    const [roleRows] =
-      await db.execute<
-        RoleRow[]
-      >(
-        `
-          SELECT
-            id,
-            name,
-            description
+    settings =
+      newRows[0];
+  }
 
-          FROM roles
+  if (!settings) {
+    throw new Error(
+      "SETTINGS_NOT_FOUND",
+    );
+  }
 
-          ORDER BY id ASC
-        `,
+  /* =======================================================
+     ROLES
+
+     Current roles table does not have
+     an ACTIVE / INACTIVE status column.
+  ======================================================= */
+
+  const [
+    roleRows,
+  ] =
+    await connection.execute<
+      RoleRow[]
+    >(
+      `
+        SELECT
+          id,
+
+          name,
+
+          description
+
+        FROM roles
+
+        ORDER BY
+          id ASC
+      `,
+    );
+
+  /* =======================================================
+     RESPONSE
+  ======================================================= */
+
+  return {
+    pharmacyName:
+      settings.pharmacy_name,
+
+    address:
+      settings.address ??
+      "",
+
+    phone:
+      settings.phone ??
+      "",
+
+    email:
+      settings.email ??
+      "",
+
+    vatEnabled:
+      Boolean(
+        settings.vat_enabled,
+      ),
+
+    vatRate:
+      Number(
+        settings.default_vat_rate ??
+          0,
+      ),
+
+    invoicePrefix:
+      settings.invoice_prefix,
+
+    purchasePrefix:
+      settings.purchase_prefix,
+
+    currencyCode:
+      settings.currency_code,
+
+    invoiceFooter:
+      settings.invoice_footer ??
+      "",
+
+    updatedAt:
+      settings.updated_at,
+
+    roles:
+      roleRows.map(
+        (role) => ({
+          id:
+            Number(
+              role.id,
+            ),
+
+          name:
+            role.name,
+
+          displayName:
+            formatRoleName(
+              role.name,
+            ),
+
+          description:
+            role.description ??
+            "",
+
+          /*
+           * Current roles schema
+           * has no status field.
+           */
+
+          status:
+            "active",
+        }),
+      ),
+  };
+}
+
+/* =========================================================
+   GET
+   /api/settings
+
+   ADMIN ONLY
+
+   Contains:
+   - Pharmacy information
+   - VAT configuration
+   - Invoice configuration
+   - Roles
+========================================================= */
+
+export async function GET() {
+  const connection =
+    await db.getConnection();
+
+  try {
+    /* =====================================================
+       ADMIN AUTHORIZATION
+    ===================================================== */
+
+    await requireAdmin(
+      connection,
+    );
+
+    /* =====================================================
+       LOAD SETTINGS
+    ===================================================== */
+
+    const data =
+      await loadSettings(
+        connection,
       );
 
-    let settings =
-      settingsRows[0];
+    return NextResponse.json(
+      {
+        success: true,
 
-    /*
-     * Safety fallback:
-     * if settings row somehow does not exist,
-     * create the default single row.
-     */
-    if (!settings) {
-      await db.execute<ResultSetHeader>(
-        `
-          INSERT INTO system_settings
-          (
-            id,
-            pharmacy_name,
-            vat_enabled,
-            default_vat_rate,
-            invoice_prefix,
-            purchase_prefix,
-            currency_code
-          )
-          VALUES
-          (
-            1,
-            'Green Life Pharmacy',
-            FALSE,
-            0,
-            'INV',
-            'PUR',
-            'BDT'
-          )
-        `,
-      );
-
-      const [newRows] =
-        await db.execute<
-          SettingsRow[]
-        >(
-          `
-            SELECT
-              id,
-              pharmacy_name,
-              address,
-              phone,
-              email,
-              vat_enabled,
-              default_vat_rate,
-              invoice_prefix,
-              purchase_prefix,
-              currency_code,
-              invoice_footer,
-
-              DATE_FORMAT(
-                updated_at,
-                '%Y-%m-%dT%H:%i:%s'
-              ) AS updated_at
-
-            FROM system_settings
-
-            WHERE id = 1
-
-            LIMIT 1
-          `,
-        );
-
-      settings =
-        newRows[0];
-    }
-
-    return NextResponse.json({
-      success: true,
-
-      data: {
-        pharmacyName:
-          settings.pharmacy_name,
-
-        address:
-          settings.address ??
-          "",
-
-        phone:
-          settings.phone ??
-          "",
-
-        email:
-          settings.email ??
-          "",
-
-        vatEnabled:
-          Boolean(
-            settings.vat_enabled,
-          ),
-
-        vatRate:
-          Number(
-            settings.default_vat_rate ??
-              0,
-          ),
-
-        invoicePrefix:
-          settings.invoice_prefix,
-
-        purchasePrefix:
-          settings.purchase_prefix,
-
-        currencyCode:
-          settings.currency_code,
-
-        invoiceFooter:
-          settings.invoice_footer ??
-          "",
-
-        updatedAt:
-          settings.updated_at,
-
-        roles:
-          roleRows.map(
-            (role) => ({
-              id:
-                Number(
-                  role.id,
-                ),
-
-              name:
-                role.name,
-
-              displayName:
-                formatRoleName(
-                  role.name,
-                ),
-
-              description:
-                role.description ??
-                "",
-
-              /*
-               * Current roles schema
-               * has no status column.
-               * Existing role rows are
-               * therefore displayed as Active.
-               */
-              status:
-                "active",
-            }),
-          ),
+        data,
       },
-    });
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
     console.error(
       "GET settings error:",
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    if (
+      error instanceof
+        Error &&
+      error.message ===
+        "SETTINGS_NOT_FOUND"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "System settings could not be initialized.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to load settings.",
+          "Failed to load settings.",
       },
       {
         status: 500,
       },
     );
+  } finally {
+    connection.release();
   }
 }
 
 /* =========================================================
-   PUT SETTINGS
+   PUT
+   /api/settings
+
+   UPDATE SETTINGS
+
+   ADMIN ONLY
 ========================================================= */
 
 export async function PUT(
@@ -345,8 +622,46 @@ export async function PUT(
     false;
 
   try {
-    const body =
-      await request.json();
+    /* =====================================================
+       ADMIN AUTHORIZATION
+
+       Must happen before configuration
+       is modified.
+    ===================================================== */
+
+    const currentAdmin =
+      await requireAdmin(
+        connection,
+      );
+
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body:
+      SettingsRequestBody;
+
+    try {
+      body =
+        (await request.json()) as
+          SettingsRequestBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       NORMALIZE
+    ===================================================== */
 
     const pharmacyName =
       cleanString(
@@ -382,7 +697,7 @@ export async function PUT(
       );
 
     /* =====================================================
-       VALIDATION
+       PHARMACY NAME
     ===================================================== */
 
     if (!pharmacyName) {
@@ -416,6 +731,10 @@ export async function PUT(
       );
     }
 
+    /* =====================================================
+       ADDRESS
+    ===================================================== */
+
     if (
       address.length >
       255
@@ -433,8 +752,13 @@ export async function PUT(
       );
     }
 
+    /* =====================================================
+       PHONE
+    ===================================================== */
+
     if (
-      phone.length > 30
+      phone.length >
+      30
     ) {
       return NextResponse.json(
         {
@@ -448,6 +772,10 @@ export async function PUT(
         },
       );
     }
+
+    /* =====================================================
+       EMAIL
+    ===================================================== */
 
     if (
       email &&
@@ -469,7 +797,8 @@ export async function PUT(
     }
 
     if (
-      email.length > 150
+      email.length >
+      150
     ) {
       return NextResponse.json(
         {
@@ -483,6 +812,10 @@ export async function PUT(
         },
       );
     }
+
+    /* =====================================================
+       VAT RATE
+    ===================================================== */
 
     if (
       !Number.isFinite(
@@ -505,53 +838,67 @@ export async function PUT(
     }
 
     /*
-     * We keep the VAT rate even when
-     * VAT is disabled.
+     * Keep configured VAT rate even if VAT
+     * is temporarily disabled.
      *
      * Example:
-     * rate = 5
-     * enabled = false
      *
-     * Admin can later turn VAT on
-     * without entering 5 again.
+     * VAT Rate = 5
+     * VAT Enabled = false
+     *
+     * Admin can enable it later without
+     * entering the rate again.
      */
+
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
 
     await connection.beginTransaction();
 
     transactionStarted =
       true;
 
-    const currentUserId =
-      await getCurrentUserId(
-        connection,
-      );
-
     /* =====================================================
        LOCK SETTINGS ROW
     ===================================================== */
 
-    const [existingRows] =
+    const [
+      existingRows,
+    ] =
       await connection.execute<
         SettingsRow[]
       >(
         `
           SELECT
             id,
+
             pharmacy_name,
+
             address,
+
             phone,
+
             email,
+
             vat_enabled,
+
             default_vat_rate,
+
             invoice_prefix,
+
             purchase_prefix,
+
             currency_code,
+
             invoice_footer,
+
             updated_at
 
           FROM system_settings
 
-          WHERE id = 1
+          WHERE
+            id = 1
 
           LIMIT 1
 
@@ -559,131 +906,233 @@ export async function PUT(
         `,
       );
 
+    /* =====================================================
+       UPDATE EXISTING SETTINGS
+    ===================================================== */
+
     if (
       existingRows.length >
       0
     ) {
-      /* ===================================================
-         UPDATE
-      =================================================== */
+      const [
+        updateResult,
+      ] =
+        await connection.execute<
+          ResultSetHeader
+        >(
+          `
+            UPDATE system_settings
 
-      await connection.execute(
-        `
-          UPDATE system_settings
+            SET
+              pharmacy_name = ?,
 
-          SET
-            pharmacy_name = ?,
-            address = ?,
-            phone = ?,
-            email = ?,
-            vat_enabled = ?,
-            default_vat_rate = ?,
-            updated_by = ?
+              address = ?,
 
-          WHERE id = 1
-        `,
-        [
-          pharmacyName,
+              phone = ?,
 
-          address || null,
+              email = ?,
 
-          phone || null,
+              vat_enabled = ?,
 
-          email || null,
+              default_vat_rate = ?,
 
-          vatEnabled
-            ? 1
-            : 0,
+              updated_by = ?
 
-          vatRate,
+            WHERE
+              id = 1
+          `,
+          [
+            pharmacyName,
 
-          currentUserId,
-        ],
-      );
+            address ||
+              null,
+
+            phone ||
+              null,
+
+            email ||
+              null,
+
+            vatEnabled
+              ? 1
+              : 0,
+
+            vatRate,
+
+            currentAdmin.userId,
+          ],
+        );
+
+      if (
+        updateResult.affectedRows !==
+        1
+      ) {
+        throw new Error(
+          "SETTINGS_UPDATE_FAILED",
+        );
+      }
     } else {
       /* ===================================================
-         INSERT SAFETY FALLBACK
+         SAFETY INSERT
+
+         Normally row 1 already exists,
+         but this guarantees settings can
+         recover if it was removed.
       =================================================== */
 
-      await connection.execute(
-        `
-          INSERT INTO system_settings
-          (
-            id,
-            pharmacy_name,
-            address,
-            phone,
-            email,
-            vat_enabled,
-            default_vat_rate,
-            invoice_prefix,
-            purchase_prefix,
-            currency_code,
-            updated_by
-          )
-          VALUES
-          (
-            1,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            'INV',
-            'PUR',
-            'BDT',
-            ?
-          )
-        `,
-        [
-          pharmacyName,
+      const [
+        insertResult,
+      ] =
+        await connection.execute<
+          ResultSetHeader
+        >(
+          `
+            INSERT INTO system_settings
+            (
+              id,
 
-          address || null,
+              pharmacy_name,
 
-          phone || null,
+              address,
 
-          email || null,
+              phone,
 
-          vatEnabled
-            ? 1
-            : 0,
+              email,
 
-          vatRate,
+              vat_enabled,
 
-          currentUserId,
-        ],
-      );
+              default_vat_rate,
+
+              invoice_prefix,
+
+              purchase_prefix,
+
+              currency_code,
+
+              updated_by
+            )
+
+            VALUES
+            (
+              1,
+
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+
+              ?,
+
+              'INV',
+
+              'PUR',
+
+              'BDT',
+
+              ?
+            )
+          `,
+          [
+            pharmacyName,
+
+            address ||
+              null,
+
+            phone ||
+              null,
+
+            email ||
+              null,
+
+            vatEnabled
+              ? 1
+              : 0,
+
+            vatRate,
+
+            currentAdmin.userId,
+          ],
+        );
+
+      if (
+        insertResult.affectedRows !==
+        1
+      ) {
+        throw new Error(
+          "SETTINGS_INSERT_FAILED",
+        );
+      }
     }
+
+    /* =====================================================
+       COMMIT
+    ===================================================== */
 
     await connection.commit();
 
     transactionStarted =
       false;
 
-    return NextResponse.json({
-      success: true,
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
-      message:
-        "Settings saved successfully.",
+    return NextResponse.json(
+      {
+        success: true,
 
-      data: {
-        pharmacyName,
+        message:
+          "Settings saved successfully.",
 
-        address,
+        data: {
+          pharmacyName,
 
-        phone,
+          address,
 
-        email,
+          phone,
 
-        vatEnabled,
+          email,
 
-        vatRate,
+          vatEnabled,
+
+          vatRate,
+
+          updatedBy: {
+            userId:
+              currentAdmin.userId,
+
+            fullName:
+              currentAdmin.fullName,
+          },
+        },
       },
-    });
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
-    if (transactionStarted) {
-      await connection.rollback();
+    /* =====================================================
+       ROLLBACK
+    ===================================================== */
+
+    if (
+      transactionStarted
+    ) {
+      try {
+        await connection.rollback();
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Settings rollback error:",
+          rollbackError,
+        );
+      }
     }
 
     console.error(
@@ -691,17 +1140,39 @@ export async function PUT(
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       DATABASE UPDATE ERROR
+    ===================================================== */
+
     if (
-      error instanceof Error &&
-      error.message ===
-        "CURRENT_USER_NOT_FOUND"
+      error instanceof
+        Error &&
+      (
+        error.message ===
+          "SETTINGS_UPDATE_FAILED" ||
+        error.message ===
+          "SETTINGS_INSERT_FAILED"
+      )
     ) {
       return NextResponse.json(
         {
           success: false,
 
           message:
-            "Development admin user was not found.",
+            "System settings could not be saved.",
         },
         {
           status: 500,
@@ -709,14 +1180,16 @@ export async function PUT(
       );
     }
 
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to save settings.",
+          "Failed to save settings.",
       },
       {
         status: 500,

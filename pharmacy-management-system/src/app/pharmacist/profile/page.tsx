@@ -3,6 +3,7 @@
 import {
   useEffect,
   useState,
+  type ReactNode,
 } from "react";
 
 import {
@@ -12,6 +13,9 @@ import {
   CheckCircle2,
   Clock3,
   Edit3,
+  Eye,
+  EyeOff,
+  KeyRound,
   Loader2,
   Mail,
   MapPin,
@@ -28,33 +32,44 @@ import {
 
 type PharmacistProfile = {
   employeeDatabaseId: number;
+
   userId: number;
 
   employeeCode: string;
 
   fullName: string;
+
   email: string;
+
   phone: string;
 
   role: string;
+
   roleLabel: string;
 
   designation: string;
 
   shift: string;
+
   shiftLabel: string;
 
-  joiningDate: string | null;
+  joiningDate:
+    | string
+    | null;
 
   address: string;
+
   emergencyContact: string;
 
   employmentStatus: string;
+
   employmentStatusLabel: string;
 
   userStatus: string;
 
-  lastLoginAt: string | null;
+  lastLoginAt:
+    | string
+    | null;
 };
 
 type ProfileApiResponse = {
@@ -62,21 +77,41 @@ type ProfileApiResponse = {
 
   message?: string;
 
-  data?: PharmacistProfile;
+  data?:
+    PharmacistProfile;
+};
+
+type MutationResponse = {
+  success: boolean;
+
+  message?: string;
 };
 
 type ProfileForm = {
   fullName: string;
+
   phone: string;
+
   address: string;
+
   emergencyContact: string;
+};
+
+type PasswordForm = {
+  currentPassword: string;
+
+  newPassword: string;
+
+  confirmPassword: string;
 };
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function getInitial(name: string) {
+function getInitial(
+  name: string,
+) {
   const trimmed =
     name.trim();
 
@@ -90,7 +125,9 @@ function getInitial(name: string) {
 }
 
 function formatDate(
-  value: string | null,
+  value:
+    | string
+    | null,
 ) {
   if (!value) {
     return "Not provided";
@@ -102,7 +139,9 @@ function formatDate(
   const parts =
     dateOnly.split("-");
 
-  if (parts.length !== 3) {
+  if (
+    parts.length !== 3
+  ) {
     return value;
   }
 
@@ -110,7 +149,9 @@ function formatDate(
 }
 
 function formatLastLogin(
-  value: string | null,
+  value:
+    | string
+    | null,
 ) {
   if (!value) {
     return "No login recorded";
@@ -120,10 +161,15 @@ function formatLastLogin(
     const normalized =
       value.includes("T")
         ? value
-        : value.replace(" ", "T");
+        : value.replace(
+            " ",
+            "T",
+          );
 
     const date =
-      new Date(normalized);
+      new Date(
+        normalized,
+      );
 
     if (
       Number.isNaN(
@@ -136,12 +182,23 @@ function formatLastLogin(
     return date.toLocaleString(
       "en-BD",
       {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
+        day:
+          "2-digit",
+
+        month:
+          "short",
+
+        year:
+          "numeric",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
+
+        hour12:
+          true,
       },
     );
   } catch {
@@ -155,26 +212,23 @@ function statusClass(
   if (
     status === "ACTIVE"
   ) {
-    return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 
   if (
-    status === "SUSPENDED"
+    status ===
+      "SUSPENDED" ||
+    status ===
+      "RESIGNED"
   ) {
-    return "bg-rose-50 text-rose-700 border-rose-200";
+    return "border-rose-200 bg-rose-50 text-rose-700";
   }
 
-  if (
-    status === "RESIGNED"
-  ) {
-    return "bg-rose-50 text-rose-700 border-rose-200";
-  }
-
-  return "bg-slate-100 text-slate-600 border-slate-200";
+  return "border-slate-200 bg-slate-100 text-slate-600";
 }
 
 /* =========================================================
-   API
+   FETCH PROFILE
 ========================================================= */
 
 async function fetchProfile(
@@ -184,15 +238,19 @@ async function fetchProfile(
     await fetch(
       "/api/pharmacist/profile",
       {
-        method: "GET",
-        cache: "no-store",
+        method:
+          "GET",
+
+        cache:
+          "no-store",
+
         signal,
       },
     );
 
-  const result:
-    ProfileApiResponse =
-    await response.json();
+  const result =
+    (await response.json()) as
+      ProfileApiResponse;
 
   if (
     !response.ok ||
@@ -213,6 +271,10 @@ async function fetchProfile(
 ========================================================= */
 
 export default function PharmacistProfilePage() {
+  /* =======================================================
+     PROFILE
+  ======================================================= */
+
   const [
     profile,
     setProfile,
@@ -232,6 +294,10 @@ export default function PharmacistProfilePage() {
     setLoadError,
   ] =
     useState("");
+
+  /* =======================================================
+     EDIT MODAL
+  ======================================================= */
 
   const [
     editOpen,
@@ -263,10 +329,69 @@ export default function PharmacistProfilePage() {
   ] =
     useState<ProfileForm>({
       fullName: "",
+
       phone: "",
+
       address: "",
-      emergencyContact: "",
+
+      emergencyContact:
+        "",
     });
+
+  /* =======================================================
+     PASSWORD
+  ======================================================= */
+
+  const [
+    passwordForm,
+    setPasswordForm,
+  ] =
+    useState<PasswordForm>({
+      currentPassword:
+        "",
+
+      newPassword:
+        "",
+
+      confirmPassword:
+        "",
+    });
+
+  const [
+    showCurrentPassword,
+    setShowCurrentPassword,
+  ] =
+    useState(false);
+
+  const [
+    showNewPassword,
+    setShowNewPassword,
+  ] =
+    useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] =
+    useState(false);
+
+  const [
+    isChangingPassword,
+    setIsChangingPassword,
+  ] =
+    useState(false);
+
+  const [
+    passwordError,
+    setPasswordError,
+  ] =
+    useState("");
+
+  const [
+    passwordSuccess,
+    setPasswordSuccess,
+  ] =
+    useState("");
 
   /* =======================================================
      LOAD PROFILE
@@ -276,10 +401,21 @@ export default function PharmacistProfilePage() {
     const controller =
       new AbortController();
 
-    fetchProfile(
-      controller.signal,
-    )
-      .then((data) => {
+    async function load() {
+      try {
+        setIsLoading(
+          true,
+        );
+
+        setLoadError(
+          "",
+        );
+
+        const data =
+          await fetchProfile(
+            controller.signal,
+          );
+
         if (
           controller.signal
             .aborted
@@ -287,13 +423,10 @@ export default function PharmacistProfilePage() {
           return;
         }
 
-        setProfile(data);
-
-        setLoadError("");
-
-        setIsLoading(false);
-      })
-      .catch((error) => {
+        setProfile(
+          data,
+        );
+      } catch (error) {
         if (
           controller.signal
             .aborted
@@ -307,13 +440,24 @@ export default function PharmacistProfilePage() {
         );
 
         setLoadError(
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
             : "Failed to load profile.",
         );
+      } finally {
+        if (
+          !controller.signal
+            .aborted
+        ) {
+          setIsLoading(
+            false,
+          );
+        }
+      }
+    }
 
-        setIsLoading(false);
-      });
+    void load();
 
     return () => {
       controller.abort();
@@ -321,33 +465,74 @@ export default function PharmacistProfilePage() {
   }, []);
 
   /* =======================================================
-     REFRESH
+     RELOAD
   ======================================================= */
 
   async function reloadProfile() {
     try {
-      setIsLoading(true);
+      setIsLoading(
+        true,
+      );
 
-      setLoadError("");
+      setLoadError(
+        "",
+      );
 
       const data =
         await fetchProfile();
 
-      setProfile(data);
-    } catch (error) {
-      console.error(
-        "Profile reload error:",
-        error,
+      setProfile(
+        data,
       );
-
+    } catch (error) {
       setLoadError(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Failed to load profile.",
       );
     } finally {
-      setIsLoading(false);
+      setIsLoading(
+        false,
+      );
     }
+  }
+
+  /* =======================================================
+     CLEAR PASSWORD FORM
+  ======================================================= */
+
+  function clearPasswordForm() {
+    setPasswordForm({
+      currentPassword:
+        "",
+
+      newPassword:
+        "",
+
+      confirmPassword:
+        "",
+    });
+
+    setShowCurrentPassword(
+      false,
+    );
+
+    setShowNewPassword(
+      false,
+    );
+
+    setShowConfirmPassword(
+      false,
+    );
+
+    setPasswordError(
+      "",
+    );
+
+    setPasswordSuccess(
+      "",
+    );
   }
 
   /* =======================================================
@@ -373,11 +558,19 @@ export default function PharmacistProfilePage() {
         profile.emergencyContact,
     });
 
-    setSaveError("");
+    setSaveError(
+      "",
+    );
 
-    setSuccessMessage("");
+    setSuccessMessage(
+      "",
+    );
 
-    setEditOpen(true);
+    clearPasswordForm();
+
+    setEditOpen(
+      true,
+    );
   }
 
   /* =======================================================
@@ -385,31 +578,48 @@ export default function PharmacistProfilePage() {
   ======================================================= */
 
   function closeEditProfile() {
-    if (isSaving) {
+    if (
+      isSaving ||
+      isChangingPassword
+    ) {
       return;
     }
 
-    setEditOpen(false);
+    setEditOpen(
+      false,
+    );
 
-    setSaveError("");
+    setSaveError(
+      "",
+    );
+
+    clearPasswordForm();
   }
 
   /* =======================================================
-     INPUT
+     UPDATE PROFILE FORM
   ======================================================= */
 
   function updateForm(
-    field: keyof ProfileForm,
+    field:
+      keyof ProfileForm,
+
     value: string,
   ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setForm(
+      (
+        current,
+      ) => ({
+        ...current,
+
+        [field]:
+          value,
+      }),
+    );
   }
 
   /* =======================================================
-     VALIDATE
+     PROFILE VALIDATION
   ======================================================= */
 
   function validateForm() {
@@ -463,42 +673,50 @@ export default function PharmacistProfilePage() {
     }
 
     try {
-      setIsSaving(true);
+      setIsSaving(
+        true,
+      );
 
-      setSaveError("");
+      setSaveError(
+        "",
+      );
 
-      setSuccessMessage("");
+      setSuccessMessage(
+        "",
+      );
 
       const response =
         await fetch(
           "/api/pharmacist/profile",
           {
-            method: "PATCH",
+            method:
+              "PATCH",
 
             headers: {
               "Content-Type":
                 "application/json",
             },
 
-            body: JSON.stringify({
-              fullName:
-                form.fullName.trim(),
+            body:
+              JSON.stringify({
+                fullName:
+                  form.fullName.trim(),
 
-              phone:
-                form.phone.trim(),
+                phone:
+                  form.phone.trim(),
 
-              address:
-                form.address.trim(),
+                address:
+                  form.address.trim(),
 
-              emergencyContact:
-                form.emergencyContact.trim(),
-            }),
+                emergencyContact:
+                  form.emergencyContact.trim(),
+              }),
           },
         );
 
-      const result:
-        ProfileApiResponse =
-        await response.json();
+      const result =
+        (await response.json()) as
+          ProfileApiResponse;
 
       if (
         !response.ok ||
@@ -515,7 +733,9 @@ export default function PharmacistProfilePage() {
         result.data,
       );
 
-      setEditOpen(false);
+      setEditOpen(
+        false,
+      );
 
       setSuccessMessage(
         "Profile updated successfully.",
@@ -523,7 +743,9 @@ export default function PharmacistProfilePage() {
 
       window.setTimeout(
         () => {
-          setSuccessMessage("");
+          setSuccessMessage(
+            "",
+          );
         },
         3500,
       );
@@ -534,12 +756,209 @@ export default function PharmacistProfilePage() {
       );
 
       setSaveError(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Failed to update profile.",
       );
     } finally {
-      setIsSaving(false);
+      setIsSaving(
+        false,
+      );
+    }
+  }
+
+  /* =======================================================
+     UPDATE PASSWORD FIELD
+  ======================================================= */
+
+  function updatePasswordField(
+    field:
+      keyof PasswordForm,
+
+    value: string,
+  ) {
+    setPasswordForm(
+      (
+        current,
+      ) => ({
+        ...current,
+
+        [field]:
+          value,
+      }),
+    );
+
+    setPasswordError(
+      "",
+    );
+
+    setPasswordSuccess(
+      "",
+    );
+  }
+
+  /* =======================================================
+     CHANGE PASSWORD
+  ======================================================= */
+
+  async function handleChangePassword() {
+    setPasswordError(
+      "",
+    );
+
+    setPasswordSuccess(
+      "",
+    );
+
+    const currentPassword =
+      passwordForm
+        .currentPassword;
+
+    const newPassword =
+      passwordForm
+        .newPassword;
+
+    const confirmPassword =
+      passwordForm
+        .confirmPassword;
+
+    /* =====================================================
+       VALIDATION
+    ===================================================== */
+
+    if (
+      !currentPassword
+    ) {
+      setPasswordError(
+        "Current password is required.",
+      );
+
+      return;
+    }
+
+    if (
+      newPassword.length <
+      8
+    ) {
+      setPasswordError(
+        "New password must be at least 8 characters long.",
+      );
+
+      return;
+    }
+
+    if (
+      newPassword.length >
+      72
+    ) {
+      setPasswordError(
+        "New password cannot exceed 72 characters.",
+      );
+
+      return;
+    }
+
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
+      setPasswordError(
+        "New password and confirm password do not match.",
+      );
+
+      return;
+    }
+
+    if (
+      currentPassword ===
+      newPassword
+    ) {
+      setPasswordError(
+        "New password must be different from your current password.",
+      );
+
+      return;
+    }
+
+    try {
+      setIsChangingPassword(
+        true,
+      );
+
+      const response =
+        await fetch(
+          "/api/pharmacist/change-password",
+          {
+            method:
+              "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                currentPassword,
+
+                newPassword,
+              }),
+          },
+        );
+
+      const result =
+        (await response.json()) as
+          MutationResponse;
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Failed to change password.",
+        );
+      }
+
+      setPasswordForm({
+        currentPassword:
+          "",
+
+        newPassword:
+          "",
+
+        confirmPassword:
+          "",
+      });
+
+      setShowCurrentPassword(
+        false,
+      );
+
+      setShowNewPassword(
+        false,
+      );
+
+      setShowConfirmPassword(
+        false,
+      );
+
+      setPasswordSuccess(
+        result.message ||
+          "Password changed successfully.",
+      );
+    } catch (error) {
+      setPasswordError(
+        error instanceof
+          Error
+          ? error.message
+          : "Failed to change password.",
+      );
+    } finally {
+      setIsChangingPassword(
+        false,
+      );
     }
   }
 
@@ -558,7 +977,8 @@ export default function PharmacistProfilePage() {
           </p>
 
           <p className="mt-1 text-xs text-slate-400">
-            Fetching pharmacist information from database.
+            Fetching pharmacist information
+            from database.
           </p>
         </div>
       </div>
@@ -611,7 +1031,7 @@ export default function PharmacistProfilePage() {
     <>
       <div className="mx-auto max-w-[1180px] space-y-4">
         {/* =================================================
-            SUCCESS
+            SUCCESS MESSAGE
         ================================================= */}
 
         {successMessage ? (
@@ -637,8 +1057,6 @@ export default function PharmacistProfilePage() {
                 )}
               </div>
 
-              {/* NAME */}
-
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="truncate text-[19px] font-semibold text-slate-900">
@@ -652,12 +1070,10 @@ export default function PharmacistProfilePage() {
                       profile.userStatus,
                     )}`}
                   >
-                    {
-                      profile.userStatus ===
-                      "ACTIVE"
-                        ? "Active"
-                        : profile.userStatus
-                    }
+                    {profile.userStatus ===
+                    "ACTIVE"
+                      ? "Active"
+                      : profile.userStatus}
                   </span>
                 </div>
 
@@ -683,8 +1099,6 @@ export default function PharmacistProfilePage() {
               </div>
             </div>
 
-            {/* EDIT */}
-
             <button
               type="button"
               onClick={
@@ -704,21 +1118,13 @@ export default function PharmacistProfilePage() {
         ================================================= */}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-5 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50">
+          <SectionTitle
+            icon={
               <BriefcaseBusiness className="h-4 w-4 text-sky-600" />
-            </div>
-
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">
-                Employee Information
-              </h2>
-
-              <p className="mt-0.5 text-[10px] text-slate-400">
-                Official employment details
-              </p>
-            </div>
-          </div>
+            }
+            title="Employee Information"
+            subtitle="Official employment details"
+          />
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             <InfoCard
@@ -784,7 +1190,7 @@ export default function PharmacistProfilePage() {
                 profile.employmentStatus ===
                 "ACTIVE"
                   ? "text-emerald-700"
-                  : "text-slate-900"
+                  : ""
               }
             />
           </div>
@@ -863,7 +1269,8 @@ export default function PharmacistProfilePage() {
               </h2>
 
               <p className="mt-1 text-[10px] text-slate-400">
-                System account and access information
+                System account and access
+                information
               </p>
             </div>
 
@@ -907,13 +1314,16 @@ export default function PharmacistProfilePage() {
 
                   <div>
                     <p className="text-xs font-semibold text-slate-700">
-                      Protected employee information
+                      Protected employee
+                      information
                     </p>
 
                     <p className="mt-1 text-[10px] leading-5 text-slate-500">
-                      Employee ID, role, designation,
-                      shift, joining date and employment
-                      status are managed by the
+                      Employee ID, role,
+                      designation, shift,
+                      joining date and
+                      employment status are
+                      managed by the
                       administrator.
                     </p>
                   </div>
@@ -930,17 +1340,19 @@ export default function PharmacistProfilePage() {
 
       {editOpen ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            {/* MODAL HEADER */}
+          <div className="flex max-h-[92vh] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            {/* HEADER */}
 
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="text-base font-semibold text-slate-900">
                   Edit Profile
                 </h2>
 
                 <p className="mt-1 text-[10px] text-slate-400">
-                  Update your personal contact information.
+                  Update your personal
+                  information and login
+                  password.
                 </p>
               </div>
 
@@ -950,25 +1362,27 @@ export default function PharmacistProfilePage() {
                   closeEditProfile
                 }
                 disabled={
-                  isSaving
+                  isSaving ||
+                  isChangingPassword
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* MODAL BODY */}
+            {/* BODY */}
 
-            <div className="max-h-[70vh] overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* PROFILE ERROR */}
+
               {saveError ? (
-                <div className="mb-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-
-                  <span>
-                    {saveError}
-                  </span>
-                </div>
+                <MessageBox
+                  type="error"
+                  message={
+                    saveError
+                  }
+                />
               ) : null}
 
               <div className="space-y-4">
@@ -992,13 +1406,19 @@ export default function PharmacistProfilePage() {
                           .value,
                       )
                     }
-                    maxLength={120}
-                    placeholder="Enter full name"
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    disabled={
+                      isSaving
+                    }
+                    maxLength={
+                      120
+                    }
+                    className={
+                      inputClass
+                    }
                   />
                 </FormField>
 
-                {/* EMAIL READ ONLY */}
+                {/* EMAIL */}
 
                 <FormField label="Email Address">
                   <input
@@ -1007,12 +1427,14 @@ export default function PharmacistProfilePage() {
                       profile.email
                     }
                     readOnly
-                    className="h-11 w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500 outline-none"
+                    className={`${inputClass} cursor-not-allowed bg-slate-50 text-slate-500`}
                   />
 
                   <p className="mt-1.5 text-[9px] text-slate-400">
-                    Email is linked to your system account
-                    and cannot be changed here.
+                    Email is linked to
+                    your system account
+                    and cannot be changed
+                    here.
                   </p>
                 </FormField>
 
@@ -1023,8 +1445,7 @@ export default function PharmacistProfilePage() {
                   required
                 >
                   <input
-                    type="tel"
-                    inputMode="numeric"
+                    type="text"
                     value={
                       form.phone
                     }
@@ -1033,15 +1454,16 @@ export default function PharmacistProfilePage() {
                     ) =>
                       updateForm(
                         "phone",
-                        event.target.value.replace(
-                          /\D/g,
-                          "",
-                        ),
+                        event.target
+                          .value,
                       )
                     }
-                    maxLength={11}
-                    placeholder="01XXXXXXXXX"
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    disabled={
+                      isSaving
+                    }
+                    className={
+                      inputClass
+                    }
                   />
                 </FormField>
 
@@ -1049,6 +1471,9 @@ export default function PharmacistProfilePage() {
 
                 <FormField label="Address">
                   <textarea
+                    rows={
+                      3
+                    }
                     value={
                       form.address
                     }
@@ -1061,19 +1486,18 @@ export default function PharmacistProfilePage() {
                           .value,
                       )
                     }
-                    maxLength={255}
-                    rows={3}
-                    placeholder="Enter address"
-                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    disabled={
+                      isSaving
+                    }
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
                   />
                 </FormField>
 
-                {/* EMERGENCY */}
+                {/* EMERGENCY CONTACT */}
 
                 <FormField label="Emergency Contact">
                   <input
-                    type="tel"
-                    inputMode="numeric"
+                    type="text"
                     value={
                       form.emergencyContact
                     }
@@ -1082,48 +1506,227 @@ export default function PharmacistProfilePage() {
                     ) =>
                       updateForm(
                         "emergencyContact",
-                        event.target.value.replace(
-                          /\D/g,
-                          "",
-                        ),
+                        event.target
+                          .value,
                       )
                     }
-                    maxLength={11}
-                    placeholder="01XXXXXXXXX"
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+                    disabled={
+                      isSaving
+                    }
+                    className={
+                      inputClass
+                    }
                   />
                 </FormField>
 
-                {/* READ ONLY INFO */}
+                {/* =========================================
+                    CHANGE PASSWORD
+                ========================================= */}
+
+                <div className="rounded-2xl border border-sky-200 bg-sky-50/50 p-4">
+                  <div className="mb-4 flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                      <KeyRound className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Change Password
+                      </p>
+
+                      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                        Enter your current
+                        password before
+                        choosing a new one.
+                      </p>
+                    </div>
+                  </div>
+
+                  {passwordError ? (
+                    <MessageBox
+                      type="error"
+                      message={
+                        passwordError
+                      }
+                    />
+                  ) : null}
+
+                  {passwordSuccess ? (
+                    <MessageBox
+                      type="success"
+                      message={
+                        passwordSuccess
+                      }
+                    />
+                  ) : null}
+
+                  <div className="space-y-3">
+                    {/* CURRENT */}
+
+                    <PasswordField
+                      label="Current Password"
+                      value={
+                        passwordForm
+                          .currentPassword
+                      }
+                      show={
+                        showCurrentPassword
+                      }
+                      disabled={
+                        isChangingPassword
+                      }
+                      onToggle={() =>
+                        setShowCurrentPassword(
+                          (
+                            current,
+                          ) =>
+                            !current,
+                        )
+                      }
+                      onChange={(
+                        value,
+                      ) =>
+                        updatePasswordField(
+                          "currentPassword",
+                          value,
+                        )
+                      }
+                    />
+
+                    {/* NEW */}
+
+                    <PasswordField
+                      label="New Password"
+                      value={
+                        passwordForm
+                          .newPassword
+                      }
+                      show={
+                        showNewPassword
+                      }
+                      disabled={
+                        isChangingPassword
+                      }
+                      placeholder="Minimum 8 characters"
+                      onToggle={() =>
+                        setShowNewPassword(
+                          (
+                            current,
+                          ) =>
+                            !current,
+                        )
+                      }
+                      onChange={(
+                        value,
+                      ) =>
+                        updatePasswordField(
+                          "newPassword",
+                          value,
+                        )
+                      }
+                    />
+
+                    {/* CONFIRM */}
+
+                    <PasswordField
+                      label="Confirm New Password"
+                      value={
+                        passwordForm
+                          .confirmPassword
+                      }
+                      show={
+                        showConfirmPassword
+                      }
+                      disabled={
+                        isChangingPassword
+                      }
+                      placeholder="Re-enter new password"
+                      onToggle={() =>
+                        setShowConfirmPassword(
+                          (
+                            current,
+                          ) =>
+                            !current,
+                        )
+                      }
+                      onChange={(
+                        value,
+                      ) =>
+                        updatePasswordField(
+                          "confirmPassword",
+                          value,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleChangePassword()
+                      }
+                      disabled={
+                        isChangingPassword ||
+                        isSaving ||
+                        !passwordForm
+                          .currentPassword ||
+                        !passwordForm
+                          .newPassword ||
+                        !passwordForm
+                          .confirmPassword
+                      }
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isChangingPassword ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+
+                          Changing...
+                        </>
+                      ) : (
+                        <>
+                          <KeyRound className="h-4 w-4" />
+
+                          Change Password
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* =========================================
+                    ADMIN MANAGED
+                ========================================= */}
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  <p className="mb-4 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                     Admin Managed
                   </p>
 
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <ReadOnlyMini
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                    <ReadOnlyField
                       label="Employee ID"
                       value={
                         profile.employeeCode
                       }
                     />
 
-                    <ReadOnlyMini
+                    <ReadOnlyField
                       label="Role"
                       value={
                         profile.roleLabel
                       }
                     />
 
-                    <ReadOnlyMini
+                    <ReadOnlyField
                       label="Shift"
                       value={
                         profile.shiftLabel
                       }
                     />
 
-                    <ReadOnlyMini
+                    <ReadOnlyField
                       label="Status"
                       value={
                         profile.employmentStatusLabel
@@ -1136,16 +1739,17 @@ export default function PharmacistProfilePage() {
 
             {/* FOOTER */}
 
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-4">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
               <button
                 type="button"
                 onClick={
                   closeEditProfile
                 }
                 disabled={
-                  isSaving
+                  isSaving ||
+                  isChangingPassword
                 }
-                className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-10 rounded-xl border border-slate-200 px-5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1156,9 +1760,10 @@ export default function PharmacistProfilePage() {
                   void handleSave()
                 }
                 disabled={
-                  isSaving
+                  isSaving ||
+                  isChangingPassword
                 }
-                className="inline-flex h-10 min-w-[132px] items-center justify-center gap-2 rounded-xl bg-[#078dce] px-4 text-sm font-semibold text-white transition hover:bg-[#067db7] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 min-w-[145px] items-center justify-center gap-2 rounded-xl bg-[#078dce] px-5 text-xs font-semibold text-white transition hover:bg-[#067db7] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSaving ? (
                   <>
@@ -1183,67 +1788,151 @@ export default function PharmacistProfilePage() {
 }
 
 /* =========================================================
-   INFO CARD
+   SHARED STYLE
 ========================================================= */
 
-function InfoCard({
+const inputClass =
+  "h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-300 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100 disabled:opacity-70";
+
+/* =========================================================
+   PASSWORD FIELD
+========================================================= */
+
+function PasswordField({
   label,
+
   value,
-  icon,
-  valueClassName = "text-slate-900",
+
+  show,
+
+  disabled,
+
+  placeholder =
+    "Enter password",
+
+  onChange,
+
+  onToggle,
 }: {
   label: string;
+
   value: string;
-  icon: React.ReactNode;
-  valueClassName?: string;
+
+  show: boolean;
+
+  disabled: boolean;
+
+  placeholder?: string;
+
+  onChange:
+    (
+      value: string,
+    ) => void;
+
+  onToggle:
+    () => void;
 }) {
   return (
-    <div className="rounded-xl bg-[#f8fafc] p-4">
-      <div className="flex items-center gap-2 text-slate-400">
-        {icon}
+    <div>
+      <label className="mb-2 block text-[11px] font-medium text-slate-700">
+        {label}
+      </label>
 
-        <p className="text-[9px] font-medium uppercase tracking-wide">
-          {label}
-        </p>
+      <div className="relative">
+        <input
+          type={
+            show
+              ? "text"
+              : "password"
+          }
+          value={
+            value
+          }
+          disabled={
+            disabled
+          }
+          onChange={(
+            event,
+          ) =>
+            onChange(
+              event.target
+                .value,
+            )
+          }
+          placeholder={
+            placeholder
+          }
+          autoComplete="new-password"
+          className={`${inputClass} pr-11`}
+        />
+
+        <button
+          type="button"
+          onClick={
+            onToggle
+          }
+          disabled={
+            disabled
+          }
+          aria-label={
+            show
+              ? "Hide password"
+              : "Show password"
+          }
+          title={
+            show
+              ? "Hide password"
+              : "Show password"
+          }
+          className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-sky-600 disabled:opacity-40"
+        >
+          {show ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
+        </button>
       </div>
-
-      <p
-        className={`mt-2 text-sm font-semibold ${valueClassName}`}
-      >
-        {value}
-      </p>
     </div>
   );
 }
 
 /* =========================================================
-   DETAIL ROW
+   MESSAGE BOX
 ========================================================= */
 
-function DetailRow({
-  icon,
-  label,
-  value,
+function MessageBox({
+  type,
+
+  message,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
+  type:
+    | "error"
+    | "success";
+
+  message: string;
 }) {
+  const success =
+    type ===
+    "success";
+
   return (
-    <div className="flex gap-3 rounded-xl bg-[#f8fafc] p-4">
-      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-sky-600 shadow-sm">
-        {icon}
-      </div>
+    <div
+      className={`mb-4 flex items-start gap-2 rounded-xl border px-3 py-3 text-xs ${
+        success
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-rose-200 bg-rose-50 text-rose-700"
+      }`}
+    >
+      {success ? (
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+      ) : (
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      )}
 
-      <div className="min-w-0">
-        <p className="text-[9px] font-medium uppercase tracking-wide text-slate-400">
-          {label}
-        </p>
-
-        <p className="mt-1 break-words text-sm font-medium text-slate-800">
-          {value}
-        </p>
-      </div>
+      <span>
+        {message}
+      </span>
     </div>
   );
 }
@@ -1254,16 +1943,21 @@ function DetailRow({
 
 function FormField({
   label,
+
   required = false,
+
   children,
 }: {
   label: string;
+
   required?: boolean;
-  children: React.ReactNode;
+
+  children:
+    ReactNode;
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+      <label className="mb-2 block text-[11px] font-medium text-slate-700">
         {label}
 
         {required ? (
@@ -1279,14 +1973,131 @@ function FormField({
 }
 
 /* =========================================================
-   READ ONLY MINI
+   SECTION TITLE
 ========================================================= */
 
-function ReadOnlyMini({
+function SectionTitle({
+  icon,
+
+  title,
+
+  subtitle,
+}: {
+  icon:
+    ReactNode;
+
+  title: string;
+
+  subtitle: string;
+}) {
+  return (
+    <div className="mb-5 flex items-center gap-2">
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50">
+        {icon}
+      </div>
+
+      <div>
+        <h2 className="text-sm font-semibold text-slate-900">
+          {title}
+        </h2>
+
+        <p className="mt-0.5 text-[10px] text-slate-400">
+          {subtitle}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   INFO CARD
+========================================================= */
+
+function InfoCard({
   label,
+
+  value,
+
+  icon,
+
+  valueClassName = "",
+}: {
+  label: string;
+
+  value: string;
+
+  icon:
+    ReactNode;
+
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+      <div className="flex items-center gap-2 text-slate-400">
+        {icon}
+
+        <span className="text-[9px] font-semibold uppercase tracking-wide">
+          {label}
+        </span>
+      </div>
+
+      <p
+        className={`mt-3 text-sm font-semibold text-slate-800 ${valueClassName}`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/* =========================================================
+   DETAIL ROW
+========================================================= */
+
+function DetailRow({
+  icon,
+
+  label,
+
+  value,
+}: {
+  icon:
+    ReactNode;
+
+  label: string;
+
+  value: string;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3.5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-sky-600 shadow-sm">
+        {icon}
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+          {label}
+        </p>
+
+        <p className="mt-1 break-words text-xs font-medium text-slate-700">
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   READ ONLY FIELD
+========================================================= */
+
+function ReadOnlyField({
+  label,
+
   value,
 }: {
   label: string;
+
   value: string;
 }) {
   return (

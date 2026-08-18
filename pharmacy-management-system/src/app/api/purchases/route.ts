@@ -11,16 +11,30 @@ import type {
   RowDataPacket,
 } from "mysql2";
 
+import type {
+  PoolConnection,
+} from "mysql2/promise";
+
 import db from "@/lib/db";
 
 import {
-  getCurrentUserId,
+  requireAdmin,
 } from "@/lib/current-user";
 
 import {
   PurchaseServiceError,
   receivePurchaseByNo,
 } from "@/lib/purchase-service";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
@@ -188,6 +202,34 @@ interface DuplicateInvoiceRow
   id: number;
 }
 
+type RawPurchaseItem = {
+  medicineId?: unknown;
+
+  purchaseUnit?: unknown;
+
+  quantity?: unknown;
+
+  unitCost?: unknown;
+
+  batchNo?: unknown;
+
+  expiryDate?: unknown;
+
+  primaryMrp?: unknown;
+};
+
+type PurchaseRequestBody = {
+  supplierId?: unknown;
+
+  supplierInvoiceNo?: unknown;
+
+  purchaseDate?: unknown;
+
+  status?: unknown;
+
+  items?: unknown;
+};
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -197,8 +239,10 @@ function roundMoney(
 ) {
   return (
     Math.round(
-      (value +
-        Number.EPSILON) *
+      (
+        value +
+        Number.EPSILON
+      ) *
         100,
     ) / 100
   );
@@ -243,17 +287,125 @@ function mapStatus(
 }
 
 /* =========================================================
-   GET PURCHASES
+   AUTH ERROR RESPONSE
 ========================================================= */
 
-export async function GET() {
-  try {
-    const [
-      purchaseRows,
-    ] =
-      await db.execute<
-        PurchaseRow[]
-      >(`
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Administrator access is required for purchase management.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
+   LOAD PURCHASE LIST
+
+   Shared internally by GET.
+========================================================= */
+
+async function loadPurchases(
+  connection: PoolConnection,
+) {
+  /* =======================================================
+     PURCHASE HEADERS
+  ======================================================= */
+
+  const [
+    purchaseRows,
+  ] =
+    await connection.execute<
+      PurchaseRow[]
+    >(
+      `
         SELECT
           p.id AS database_id,
 
@@ -261,7 +413,8 @@ export async function GET() {
 
           s.supplier_code,
 
-          s.name AS supplier_name,
+          s.name
+            AS supplier_name,
 
           p.supplier_invoice_no,
 
@@ -301,25 +454,34 @@ export async function GET() {
 
         ORDER BY
           p.id DESC
-      `);
+      `,
+    );
 
-    if (
-      purchaseRows.length ===
-      0
-    ) {
-      return NextResponse.json({
-        success: true,
+  /* =======================================================
+     EMPTY
+  ======================================================= */
 
-        data: [],
-      });
-    }
+  if (
+    purchaseRows.length ===
+    0
+  ) {
+    return [];
+  }
 
-    const [itemRows] =
-      await db.execute<
-        PurchaseItemRow[]
-      >(`
+  /* =======================================================
+     PURCHASE ITEMS
+  ======================================================= */
+
+  const [
+    itemRows,
+  ] =
+    await connection.execute<
+      PurchaseItemRow[]
+    >(
+      `
         SELECT
-          pi.id AS item_id,
+          pi.id
+            AS item_id,
 
           pi.purchase_id,
 
@@ -386,14 +548,29 @@ export async function GET() {
         ORDER BY
           pi.purchase_id DESC,
           pi.id ASC
-      `);
+      `,
+    );
 
-    const [priceRows] =
-      await db.execute<
-        PriceRow[]
-      >(`
+  /* =======================================================
+     UNIT PRICES
+
+     Received purchases:
+     → batch_unit_prices
+
+     Pending purchases:
+     → rebuild from stored primary MRP
+  ======================================================= */
+
+  const [
+    priceRows,
+  ] =
+    await connection.execute<
+      PriceRow[]
+    >(
+      `
         SELECT
-          pi.id AS item_id,
+          pi.id
+            AS item_id,
 
           u.unit_name,
 
@@ -437,279 +614,355 @@ export async function GET() {
         ORDER BY
           pi.id ASC,
           u.conversion_to_base DESC
-      `);
+      `,
+    );
 
-    const priceMap =
-      new Map<
-        number,
-        Array<{
+  /* =======================================================
+     PRICE MAP
+  ======================================================= */
+
+  const priceMap =
+    new Map<
+      number,
+      Array<{
+        unitName: string;
+
+        conversionToBase:
+          number;
+
+        sellingPrice:
+          number;
+
+        mrp:
+          number;
+      }>
+    >();
+
+  for (
+    const row of
+    priceRows
+  ) {
+    let mrp =
+      row.batch_mrp !==
+      null
+        ? Number(
+            row.batch_mrp,
+          )
+        : 0;
+
+    let sellingPrice =
+      row.batch_selling_price !==
+      null
+        ? Number(
+            row.batch_selling_price,
+          )
+        : 0;
+
+    /*
+     * Pending purchase:
+     * no received batch exists yet.
+     *
+     * Rebuild sellable-unit MRP
+     * from primary pricing unit MRP.
+     */
+
+    if (
+      row.batch_mrp ===
+        null &&
+      row.pricing_unit_mrp !==
+        null &&
+      row.pricing_conversion !==
+        null
+    ) {
+      const primaryMrp =
+        Number(
+          row.pricing_unit_mrp,
+        );
+
+      const primaryConversion =
+        Number(
+          row.pricing_conversion,
+        );
+
+      const unitConversion =
+        Number(
+          row.conversion_to_base,
+        );
+
+      if (
+        primaryConversion >
+        0
+      ) {
+        mrp =
+          roundMoney(
+            (
+              primaryMrp *
+              unitConversion
+            ) /
+              primaryConversion,
+          );
+
+        sellingPrice =
+          mrp;
+      }
+    }
+
+    const current =
+      priceMap.get(
+        row.item_id,
+      ) ?? [];
+
+    current.push({
+      unitName:
+        row.unit_name,
+
+      conversionToBase:
+        Number(
+          row.conversion_to_base,
+        ),
+
+      sellingPrice,
+
+      mrp,
+    });
+
+    priceMap.set(
+      row.item_id,
+      current,
+    );
+  }
+
+  /* =======================================================
+     ITEM MAP
+  ======================================================= */
+
+  const itemMap =
+    new Map<
+      number,
+      Array<{
+        id: string;
+
+        medicineId: string;
+
+        medicine: string;
+
+        genericName: string;
+
+        baseUnit: string;
+
+        purchaseUnit: string;
+
+        conversionToBase:
+          number;
+
+        quantity: number;
+
+        baseQuantity: number;
+
+        unitCost: number;
+
+        batchNo: string;
+
+        expiryDate: string;
+
+        unitPrices: Array<{
           unitName: string;
 
-          conversionToBase: number;
+          conversionToBase:
+            number;
 
-          sellingPrice: number;
+          sellingPrice:
+            number;
 
-          mrp: number;
-        }>
-      >();
+          mrp:
+            number;
+        }>;
+      }>
+    >();
 
-    for (
-      const row of
-      priceRows
-    ) {
-      let mrp =
-        row.batch_mrp !==
-        null
-          ? Number(
-              row.batch_mrp,
-            )
-          : 0;
+  for (
+    const row of
+    itemRows
+  ) {
+    const current =
+      itemMap.get(
+        row.purchase_id,
+      ) ?? [];
 
-      let sellingPrice =
-        row.batch_selling_price !==
-        null
-          ? Number(
-              row.batch_selling_price,
-            )
-          : 0;
+    current.push({
+      id:
+        `PITEM-${row.item_id}`,
 
-      /*
-       * Pending purchase has no batch price yet.
-       * Rebuild it from stored primary MRP.
-       */
-      if (
-        row.batch_mrp ===
-          null &&
-        row.pricing_unit_mrp !==
-          null &&
-        row.pricing_conversion !==
-          null
-      ) {
-        const primaryMrp =
-          Number(
-            row.pricing_unit_mrp,
-          );
+      medicineId:
+        row.medicine_code,
 
-        const primaryConversion =
-          Number(
-            row.pricing_conversion,
-          );
+      medicine:
+        row.medicine_name,
 
-        const unitConversion =
-          Number(
-            row.conversion_to_base,
-          );
+      genericName:
+        row.generic_name ??
+        "",
 
-        if (
-          primaryConversion >
-          0
-        ) {
-          mrp =
-            roundMoney(
-              (
-                primaryMrp *
-                unitConversion
-              ) /
-                primaryConversion,
-            );
+      baseUnit:
+        row.base_unit,
 
-          sellingPrice =
-            mrp;
-        }
-      }
+      purchaseUnit:
+        row.purchase_unit,
 
-      const current =
+      conversionToBase:
+        Number(
+          row.conversion_to_base_snapshot,
+        ),
+
+      quantity:
+        Number(
+          row.quantity,
+        ),
+
+      baseQuantity:
+        Number(
+          row.base_quantity,
+        ),
+
+      unitCost:
+        Number(
+          row.unit_cost,
+        ),
+
+      batchNo:
+        row.batch_no,
+
+      expiryDate:
+        row.expiry_date,
+
+      unitPrices:
         priceMap.get(
           row.item_id,
-        ) ?? [];
-
-      current.push({
-        unitName:
-          row.unit_name,
-
-        conversionToBase:
-          Number(
-            row.conversion_to_base,
-          ),
-
-        sellingPrice,
-
-        mrp,
-      });
-
-      priceMap.set(
-        row.item_id,
-        current,
-      );
-    }
-
-    const itemMap =
-      new Map<
-        number,
-        Array<{
-          id: string;
-
-          medicineId: string;
-
-          medicine: string;
-
-          genericName: string;
-
-          baseUnit: string;
-
-          purchaseUnit: string;
-
-          conversionToBase: number;
-
-          quantity: number;
-
-          baseQuantity: number;
-
-          unitCost: number;
-
-          batchNo: string;
-
-          expiryDate: string;
-
-          unitPrices: Array<{
-            unitName: string;
-
-            conversionToBase: number;
-
-            sellingPrice: number;
-
-            mrp: number;
-          }>;
-        }>
-      >();
-
-    for (
-      const row of
-      itemRows
-    ) {
-      const current =
-        itemMap.get(
-          row.purchase_id,
-        ) ?? [];
-
-      current.push({
-        id:
-          `PITEM-${row.item_id}`,
-
-        medicineId:
-          row.medicine_code,
-
-        medicine:
-          row.medicine_name,
-
-        genericName:
-          row.generic_name ??
-          "",
-
-        baseUnit:
-          row.base_unit,
-
-        purchaseUnit:
-          row.purchase_unit,
-
-        conversionToBase:
-          Number(
-            row.conversion_to_base_snapshot,
-          ),
-
-        quantity:
-          Number(
-            row.quantity,
-          ),
-
-        baseQuantity:
-          Number(
-            row.base_quantity,
-          ),
-
-        unitCost:
-          Number(
-            row.unit_cost,
-          ),
-
-        batchNo:
-          row.batch_no,
-
-        expiryDate:
-          row.expiry_date,
-
-        unitPrices:
-          priceMap.get(
-            row.item_id,
-          ) ?? [],
-      });
-
-      itemMap.set(
-        row.purchase_id,
-        current,
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-
-      data:
-        purchaseRows.map(
-          (purchase) => ({
-            id:
-              purchase.purchase_no,
-
-            databaseId:
-              Number(
-                purchase.database_id,
-              ),
-
-            supplierId:
-              purchase.supplier_code,
-
-            supplier:
-              purchase.supplier_name,
-
-            supplierInvoiceNo:
-              purchase.supplier_invoice_no ??
-              "",
-
-            purchaseDate:
-              purchase.purchase_date,
-
-            status:
-              mapStatus(
-                purchase.status,
-              ),
-
-            items:
-              itemMap.get(
-                purchase.database_id,
-              ) ?? [],
-
-            totalAmount:
-              Number(
-                purchase.grand_total,
-              ),
-
-            processedBy:
-              purchase.processed_by,
-
-            receivedBy:
-              purchase.received_by ??
-              undefined,
-
-            receivedAt:
-              purchase.received_at ??
-              undefined,
-          }),
-        ),
+        ) ?? [],
     });
+
+    itemMap.set(
+      row.purchase_id,
+      current,
+    );
+  }
+
+  /* =======================================================
+     RESPONSE DATA
+  ======================================================= */
+
+  return purchaseRows.map(
+    (
+      purchase,
+    ) => ({
+      id:
+        purchase.purchase_no,
+
+      databaseId:
+        Number(
+          purchase.database_id,
+        ),
+
+      supplierId:
+        purchase.supplier_code,
+
+      supplier:
+        purchase.supplier_name,
+
+      supplierInvoiceNo:
+        purchase.supplier_invoice_no ??
+        "",
+
+      purchaseDate:
+        purchase.purchase_date,
+
+      status:
+        mapStatus(
+          purchase.status,
+        ),
+
+      items:
+        itemMap.get(
+          purchase.database_id,
+        ) ?? [],
+
+      totalAmount:
+        Number(
+          purchase.grand_total,
+        ),
+
+      processedBy:
+        purchase.processed_by,
+
+      receivedBy:
+        purchase.received_by ??
+        undefined,
+
+      receivedAt:
+        purchase.received_at ??
+        undefined,
+    }),
+  );
+}
+
+/* =========================================================
+   GET
+   /api/purchases
+
+   ADMIN ONLY
+========================================================= */
+
+export async function GET() {
+  const connection =
+    await db.getConnection();
+
+  try {
+    /* =====================================================
+       ADMIN AUTHORIZATION
+    ===================================================== */
+
+    await requireAdmin(
+      connection,
+    );
+
+    /* =====================================================
+       PURCHASE DATA
+    ===================================================== */
+
+    const purchases =
+      await loadPurchases(
+        connection,
+      );
+
+    return NextResponse.json(
+      {
+        success: true,
+
+        data:
+          purchases,
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
     console.error(
       "GET purchases error:",
       error,
     );
+
+    /* =====================================================
+       AUTHORIZATION
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
 
     return NextResponse.json(
       {
@@ -722,11 +975,18 @@ export async function GET() {
         status: 500,
       },
     );
+  } finally {
+    connection.release();
   }
 }
 
 /* =========================================================
+   POST
+   /api/purchases
+
    CREATE PURCHASE
+
+   ADMIN ONLY
 ========================================================= */
 
 export async function POST(
@@ -735,9 +995,50 @@ export async function POST(
   const connection =
     await db.getConnection();
 
+  let transactionStarted =
+    false;
+
   try {
-    const body =
-      await request.json();
+    /* =====================================================
+       ADMIN AUTHORIZATION
+
+       Purchase creation must never be allowed
+       for Pharmacist users.
+    ===================================================== */
+
+    const currentAdmin =
+      await requireAdmin(
+        connection,
+      );
+
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body:
+      PurchaseRequestBody;
+
+    try {
+      body =
+        (await request.json()) as
+          PurchaseRequestBody;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       BASIC FIELDS
+    ===================================================== */
 
     const supplierCode =
       cleanString(
@@ -761,6 +1062,10 @@ export async function POST(
         ? "Received"
         : "Pending";
 
+    /* =====================================================
+       VALIDATE SUPPLIER
+    ===================================================== */
+
     if (!supplierCode) {
       return NextResponse.json(
         {
@@ -774,6 +1079,10 @@ export async function POST(
         },
       );
     }
+
+    /* =====================================================
+       VALIDATE DATE
+    ===================================================== */
 
     if (
       !validDate(
@@ -792,6 +1101,10 @@ export async function POST(
         },
       );
     }
+
+    /* =====================================================
+       VALIDATE ITEMS
+    ===================================================== */
 
     if (
       !Array.isArray(
@@ -813,31 +1126,44 @@ export async function POST(
       );
     }
 
+    const rawItems =
+      body.items as
+        RawPurchaseItem[];
+
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
+
     await connection.beginTransaction();
 
-    const userId =
-      await getCurrentUserId(
-        connection,
-      );
+    transactionStarted =
+      true;
 
     /* =====================================================
        SUPPLIER
+
+       Only ACTIVE supplier can be used.
     ===================================================== */
 
-    const [supplierRows] =
+    const [
+      supplierRows,
+    ] =
       await connection.execute<
         SupplierRow[]
       >(
         `
           SELECT
             id,
+
             name
 
           FROM suppliers
 
           WHERE
             supplier_code = ?
-            AND status = 'ACTIVE'
+
+            AND
+            status = 'ACTIVE'
 
           LIMIT 1
         `,
@@ -866,12 +1192,15 @@ export async function POST(
     if (
       supplierInvoiceNo
     ) {
-      const [duplicates] =
+      const [
+        duplicates,
+      ] =
         await connection.execute<
           DuplicateInvoiceRow[]
         >(
           `
-            SELECT id
+            SELECT
+              id
 
             FROM purchases
 
@@ -907,12 +1236,17 @@ export async function POST(
 
     /* =====================================================
        CREATE PURCHASE HEADER
+
+       created_by now always contains
+       actual authenticated Admin user ID.
     ===================================================== */
 
     const temporaryNo =
       `TMP-${randomUUID()}`;
 
-    const [purchaseResult] =
+    const [
+      purchaseResult,
+    ] =
       await connection.execute<
         ResultSetHeader
       >(
@@ -920,16 +1254,26 @@ export async function POST(
           INSERT INTO purchases
           (
             purchase_no,
+
             supplier_id,
+
             supplier_invoice_no,
+
             purchase_date,
+
             status,
+
             subtotal,
+
             discount_amount,
+
             additional_cost,
+
             grand_total,
+
             created_by
           )
+
           VALUES
           (
             ?,
@@ -954,12 +1298,16 @@ export async function POST(
 
           purchaseDate,
 
-          userId,
+          currentAdmin.userId,
         ],
       );
 
     const purchaseId =
       purchaseResult.insertId;
+
+    /* =====================================================
+       PURCHASE NUMBER
+    ===================================================== */
 
     const purchaseYear =
       purchaseDate.slice(
@@ -979,9 +1327,11 @@ export async function POST(
       `
         UPDATE purchases
 
-        SET purchase_no = ?
+        SET
+          purchase_no = ?
 
-        WHERE id = ?
+        WHERE
+          id = ?
       `,
       [
         purchaseNo,
@@ -1003,11 +1353,11 @@ export async function POST(
     for (
       let index = 0;
       index <
-      body.items.length;
+      rawItems.length;
       index += 1
     ) {
       const rawItem =
-        body.items[index];
+        rawItems[index];
 
       const medicineCode =
         cleanString(
@@ -1047,6 +1397,10 @@ export async function POST(
       const itemNumber =
         index + 1;
 
+      /* ===================================================
+         MEDICINE REQUIRED
+      =================================================== */
+
       if (
         !medicineCode
       ) {
@@ -1055,6 +1409,10 @@ export async function POST(
         );
       }
 
+      /* ===================================================
+         PURCHASE UNIT REQUIRED
+      =================================================== */
+
       if (
         !purchaseUnitName
       ) {
@@ -1062,6 +1420,10 @@ export async function POST(
           `Purchase unit is required for item ${itemNumber}.`,
         );
       }
+
+      /* ===================================================
+         QUANTITY
+      =================================================== */
 
       if (
         !Number.isInteger(
@@ -1074,6 +1436,10 @@ export async function POST(
         );
       }
 
+      /* ===================================================
+         PURCHASE COST
+      =================================================== */
+
       if (
         !Number.isFinite(
           unitCost,
@@ -1085,6 +1451,10 @@ export async function POST(
         );
       }
 
+      /* ===================================================
+         BATCH NUMBER
+      =================================================== */
+
       if (
         !batchNo
       ) {
@@ -1092,6 +1462,10 @@ export async function POST(
           `Batch number is required for item ${itemNumber}.`,
         );
       }
+
+      /* ===================================================
+         EXPIRY DATE
+      =================================================== */
 
       if (
         !validDate(
@@ -1105,6 +1479,10 @@ export async function POST(
         );
       }
 
+      /* ===================================================
+         PRIMARY MRP
+      =================================================== */
+
       if (
         !Number.isFinite(
           primaryMrp,
@@ -1115,6 +1493,11 @@ export async function POST(
           `Valid box/package MRP is required for item ${itemNumber}.`,
         );
       }
+
+      /* ===================================================
+         DUPLICATE MEDICINE + BATCH
+         INSIDE SAME PURCHASE
+      =================================================== */
 
       const duplicateKey =
         `${medicineCode.toLowerCase()}-${batchNo.toLowerCase()}`;
@@ -1135,22 +1518,29 @@ export async function POST(
 
       /* ===================================================
          MEDICINE
+
+         Only ACTIVE medicines can be purchased.
       =================================================== */
 
-      const [medicineRows] =
+      const [
+        medicineRows,
+      ] =
         await connection.execute<
           MedicineRow[]
         >(
           `
             SELECT
               id,
+
               name
 
             FROM medicines
 
             WHERE
               medicine_code = ?
-              AND status = 'ACTIVE'
+
+              AND
+              status = 'ACTIVE'
 
             LIMIT 1
           `,
@@ -1175,21 +1565,28 @@ export async function POST(
          UNITS
       =================================================== */
 
-      const [units] =
+      const [
+        units,
+      ] =
         await connection.execute<
           UnitRow[]
         >(
           `
             SELECT
               id,
+
               unit_name,
+
               conversion_to_base,
+
               is_sellable,
+
               is_purchasable
 
             FROM medicine_units
 
-            WHERE medicine_id = ?
+            WHERE
+              medicine_id = ?
 
             ORDER BY
               conversion_to_base DESC
@@ -1199,9 +1596,15 @@ export async function POST(
           ],
         );
 
+      /* ===================================================
+         PURCHASE UNIT
+      =================================================== */
+
       const purchaseUnit =
         units.find(
-          (unit) =>
+          (
+            unit,
+          ) =>
             unit.unit_name ===
               purchaseUnitName &&
             Boolean(
@@ -1209,16 +1612,26 @@ export async function POST(
             ),
         );
 
-      if (!purchaseUnit) {
+      if (
+        !purchaseUnit
+      ) {
         throw new PurchaseServiceError(
           `${purchaseUnitName} is not a valid purchasable unit for item ${itemNumber}.`,
         );
       }
 
+      /* ===================================================
+         PRIMARY PRICING UNIT
+
+         Highest sellable conversion.
+      =================================================== */
+
       const pricingUnit =
         units
           .filter(
-            (unit) =>
+            (
+              unit,
+            ) =>
               Boolean(
                 unit.is_sellable,
               ),
@@ -1236,11 +1649,17 @@ export async function POST(
               ),
           )[0];
 
-      if (!pricingUnit) {
+      if (
+        !pricingUnit
+      ) {
         throw new PurchaseServiceError(
           `No selling unit is configured for item ${itemNumber}.`,
         );
       }
+
+      /* ===================================================
+         CONVERSION
+      =================================================== */
 
       const conversion =
         Number(
@@ -1248,39 +1667,74 @@ export async function POST(
             .conversion_to_base,
         );
 
+      if (
+        !Number.isFinite(
+          conversion,
+        ) ||
+        conversion <= 0
+      ) {
+        throw new PurchaseServiceError(
+          `Invalid unit conversion for item ${itemNumber}.`,
+        );
+      }
+
+      /* ===================================================
+         BASE QUANTITY
+      =================================================== */
+
       const baseQuantity =
         quantity *
         conversion;
 
+      /* ===================================================
+         LINE TOTAL
+      =================================================== */
+
       const lineTotal =
         roundMoney(
           quantity *
-          unitCost,
+            unitCost,
         );
 
       subtotal =
         roundMoney(
           subtotal +
-          lineTotal,
+            lineTotal,
         );
+
+      /* ===================================================
+         INSERT PURCHASE ITEM
+      =================================================== */
 
       await connection.execute(
         `
           INSERT INTO purchase_items
           (
             purchase_id,
+
             medicine_id,
+
             purchase_unit_id,
+
             batch_no,
+
             expiry_date,
+
             quantity,
+
             conversion_to_base_snapshot,
+
             base_quantity,
+
             unit_cost,
+
             line_total,
+
             pricing_unit_id,
+
             pricing_unit_mrp
           )
+
           VALUES
           (
             ?,
@@ -1328,7 +1782,7 @@ export async function POST(
     }
 
     /* =====================================================
-       TOTAL
+       PURCHASE TOTAL
     ===================================================== */
 
     await connection.execute(
@@ -1337,9 +1791,11 @@ export async function POST(
 
         SET
           subtotal = ?,
+
           grand_total = ?
 
-        WHERE id = ?
+        WHERE
+          id = ?
       `,
       [
         subtotal,
@@ -1351,7 +1807,21 @@ export async function POST(
     );
 
     /* =====================================================
-       RECEIVE IMMEDIATELY IF REQUESTED
+       RECEIVE IMMEDIATELY
+
+       If Admin chooses Received while
+       creating the purchase:
+
+       receivePurchaseByNo() handles:
+       - batch creation
+       - inventory update
+       - batch prices
+       - stock movements
+       - received_by
+       - received_at
+
+       Actual authenticated Admin ID
+       is recorded.
     ===================================================== */
 
     if (
@@ -1363,11 +1833,18 @@ export async function POST(
 
         purchaseNo,
 
-        userId,
+        currentAdmin.userId,
       );
     }
 
+    /* =====================================================
+       COMMIT
+    ===================================================== */
+
     await connection.commit();
+
+    transactionStarted =
+      false;
 
     return NextResponse.json(
       {
@@ -1381,6 +1858,14 @@ export async function POST(
 
         data: {
           purchaseNo,
+
+          createdBy: {
+            userId:
+              currentAdmin.userId,
+
+            fullName:
+              currentAdmin.fullName,
+          },
         },
       },
       {
@@ -1388,12 +1873,46 @@ export async function POST(
       },
     );
   } catch (error) {
-    await connection.rollback();
+    /* =====================================================
+       ROLLBACK
+    ===================================================== */
+
+    if (
+      transactionStarted
+    ) {
+      try {
+        await connection.rollback();
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Purchase rollback error:",
+          rollbackError,
+        );
+      }
+    }
 
     console.error(
       "POST purchase error:",
       error,
     );
+
+    /* =====================================================
+       AUTHORIZATION
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       PURCHASE SERVICE ERRORS
+    ===================================================== */
 
     if (
       error instanceof
@@ -1416,23 +1935,9 @@ export async function POST(
       );
     }
 
-    if (
-      error instanceof Error &&
-      error.message ===
-        "CURRENT_USER_NOT_FOUND"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-
-          message:
-            "Development admin user is missing. Import database/03_dev_admin.sql first.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
 
     return NextResponse.json(
       {

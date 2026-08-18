@@ -1,71 +1,50 @@
 import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
+
 import db from "@/lib/db";
+import { requireAdmin } from "@/lib/current-user";
 
-type ReorderMode =
-  | "MANUAL"
-  | "AUTO";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-interface LockRow
-  extends RowDataPacket {
-  lock_status:
-    | number
-    | string
-    | null;
+/* =========================================================
+   TYPES
+========================================================= */
+
+type ReorderMode = "MANUAL" | "AUTO";
+
+interface LockRow extends RowDataPacket {
+  lock_status: number | string | null;
 }
 
-interface AutoSettingRow
-  extends RowDataPacket {
+interface AutoSettingRow extends RowDataPacket {
   medicine_id: number;
-
   medicine_code: string;
-
   medicine_name: string;
 
   reorder_mode: ReorderMode;
 
-  manual_reorder_level_base:
-    | number
-    | string;
+  manual_reorder_level_base: number | string;
+  safety_stock_base: number | string;
 
-  safety_stock_base:
-    | number
-    | string;
-
-  sales_lookback_days:
-    | number
-    | string;
-
-  minimum_history_days:
-    | number
-    | string;
-
-  lead_time_days:
-    | number
-    | string;
+  sales_lookback_days: number | string;
+  minimum_history_days: number | string;
+  lead_time_days: number | string;
 }
 
-interface SalesHistoryRow
-  extends RowDataPacket {
-  sold_base:
-    | number
-    | string;
-
-  observed_history_days:
-    | number
-    | string;
+interface SalesHistoryRow extends RowDataPacket {
+  sold_base: number | string;
+  observed_history_days: number | string;
 }
 
-function round3(
-  value: number,
-) {
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function round3(value: number) {
   return (
     Math.round(
-      (
-        value +
-        Number.EPSILON
-      ) *
-        1000,
+      (value + Number.EPSILON) * 1000,
     ) / 1000
   );
 }
@@ -74,16 +53,9 @@ function safeNumber(
   value: unknown,
   fallback = 0,
 ) {
-  const parsed =
-    Number(
-      value,
-    );
+  const parsed = Number(value);
 
-  if (
-    !Number.isFinite(
-      parsed,
-    )
-  ) {
+  if (!Number.isFinite(parsed)) {
     return fallback;
   }
 
@@ -99,16 +71,9 @@ function safeInteger(
   minimum: number,
   maximum: number,
 ) {
-  const parsed =
-    Number(
-      value,
-    );
+  const parsed = Number(value);
 
-  if (
-    !Number.isFinite(
-      parsed,
-    )
-  ) {
+  if (!Number.isFinite(parsed)) {
     return fallback;
   }
 
@@ -116,16 +81,119 @@ function safeInteger(
     maximum,
     Math.max(
       minimum,
-      Math.floor(
-        parsed,
-      ),
+      Math.floor(parsed),
     ),
   );
 }
 
 /* =========================================================
+   AUTH ERROR RESPONSE
+========================================================= */
+
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Administrator access is required to recalculate reorder levels.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
    POST
-   RECALCULATE AUTO REORDER LEVELS
+   /api/reorder/recalculate
+
+   ADMIN ONLY
+
+   Calculates AUTO reorder levels using:
+
+   Average Daily Sales
+         ×
+   Supplier Lead Time
+         +
+   Safety Stock
+
+   If there is not enough sales history,
+   manual reorder level is used as fallback.
 ========================================================= */
 
 export async function POST() {
@@ -137,10 +205,21 @@ export async function POST() {
 
   try {
     /* =====================================================
-       PREVENT TWO RECALCULATIONS FROM RUNNING TOGETHER
+       ADMIN AUTHORIZATION
 
-       This is especially useful in Next.js development
-       mode where effects may fire more than once.
+       Reorder settings are inventory-management
+       configuration and therefore Admin-only.
+    ===================================================== */
+
+    const currentAdmin =
+      await requireAdmin(
+        connection,
+      );
+
+    /* =====================================================
+       PREVENT CONCURRENT RECALCULATION
+
+       Only one recalculation can run at a time.
     ===================================================== */
 
     const [lockRows] =
@@ -158,18 +237,14 @@ export async function POST() {
 
     const lockStatus =
       Number(
-        lockRows[0]
-          ?.lock_status ??
+        lockRows[0]?.lock_status ??
           0,
       );
 
-    if (
-      lockStatus !== 1
-    ) {
+    if (lockStatus !== 1) {
       return NextResponse.json(
         {
           success: false,
-
           message:
             "Auto reorder calculation is already running. Please try again.",
         },
@@ -185,10 +260,8 @@ export async function POST() {
     /* =====================================================
        ENSURE EVERY MEDICINE HAS INVENTORY SETTINGS
 
-       No explicit transaction is used here.
-
-       Each statement uses normal MySQL autocommit,
-       which avoids the previous long transaction deadlock.
+       New medicines may not yet have a
+       medicine_inventory_settings row.
     ===================================================== */
 
     await connection.execute(
@@ -220,17 +293,15 @@ export async function POST() {
         FROM medicines m
 
         LEFT JOIN medicine_inventory_settings mis
-          ON mis.medicine_id =
-             m.id
+          ON mis.medicine_id = m.id
 
         WHERE
-          mis.medicine_id
-          IS NULL
+          mis.medicine_id IS NULL
       `,
     );
 
     /* =====================================================
-       LOAD ACTIVE AUTO MEDICINES
+       LOAD ACTIVE MEDICINES USING AUTO MODE
     ===================================================== */
 
     const [autoRows] =
@@ -239,22 +310,14 @@ export async function POST() {
       >(
         `
           SELECT
-            m.id
-              AS medicine_id,
-
+            m.id AS medicine_id,
             m.medicine_code,
-
-            m.name
-              AS medicine_name,
+            m.name AS medicine_name,
 
             mis.reorder_mode,
-
             mis.manual_reorder_level_base,
-
             mis.safety_stock_base,
-
             mis.sales_lookback_days,
-
             mis.minimum_history_days,
 
             COALESCE(
@@ -285,8 +348,7 @@ export async function POST() {
                 LIMIT 1
               ),
               7
-            )
-              AS lead_time_days
+            ) AS lead_time_days
 
           FROM medicines m
 
@@ -306,45 +368,46 @@ export async function POST() {
         `,
       );
 
+    /* =====================================================
+       RESULT COUNTERS
+    ===================================================== */
+
     let calculatedCount =
       0;
 
     let fallbackCount =
       0;
 
-    const results:
-      Array<{
-        medicineCode: string;
+    const results: Array<{
+      medicineCode: string;
+      medicineName: string;
 
-        medicineName: string;
+      soldBaseQuantity: number;
 
-        soldBaseQuantity: number;
+      historyDays: number;
+      lookbackDays: number;
+      minimumHistoryDays: number;
 
-        historyDays: number;
+      averageDailySales: number;
 
-        lookbackDays: number;
+      leadTimeDays: number;
 
-        minimumHistoryDays: number;
+      safetyStockBase: number;
 
-        averageDailySales: number;
+      reorderLevelBase: number;
 
-        leadTimeDays: number;
-
-        safetyStockBase: number;
-
-        reorderLevelBase: number;
-
-        usedManualFallback: boolean;
-      }> = [];
+      usedManualFallback: boolean;
+    }> = [];
 
     /* =====================================================
        CALCULATE EACH AUTO MEDICINE
     ===================================================== */
 
-    for (
-      const setting of
-      autoRows
-    ) {
+    for (const setting of autoRows) {
+      /* ===================================================
+         SETTINGS
+      =================================================== */
+
       const lookbackDays =
         safeInteger(
           setting.sales_lookback_days,
@@ -381,15 +444,25 @@ export async function POST() {
           0,
         );
 
+      /*
+       * Example:
+       *
+       * lookbackDays = 30
+       *
+       * today + previous 29 days
+       * = 30 calendar days.
+       */
+
       const intervalDays =
-        lookbackDays -
-        1;
+        lookbackDays - 1;
 
       /* ===================================================
          SALES HISTORY
 
          Only COMPLETED sales count.
-         base_quantity is already stored in base units.
+
+         sale_items.base_quantity is already
+         normalized into medicine base units.
       =================================================== */
 
       const [historyRows] =
@@ -403,8 +476,7 @@ export async function POST() {
                   si.base_quantity
                 ),
                 0
-              )
-                AS sold_base,
+              ) AS sold_base,
 
               COALESCE(
                 LEAST(
@@ -421,8 +493,7 @@ export async function POST() {
                   ) + 1
                 ),
                 0
-              )
-                AS observed_history_days
+              ) AS observed_history_days
 
             FROM sale_items si
 
@@ -454,15 +525,13 @@ export async function POST() {
 
       const soldBaseQuantity =
         safeNumber(
-          history
-            ?.sold_base,
+          history?.sold_base,
           0,
         );
 
       const historyDays =
         safeInteger(
-          history
-            ?.observed_history_days,
+          history?.observed_history_days,
           0,
           0,
           lookbackDays,
@@ -473,8 +542,7 @@ export async function POST() {
       =================================================== */
 
       const averageDailySales =
-        historyDays >
-        0
+        historyDays > 0
           ? round3(
               soldBaseQuantity /
                 historyDays,
@@ -488,13 +556,15 @@ export async function POST() {
       /* ===================================================
          SAFETY STOCK
 
-         Explicit safety stock if configured.
-         Otherwise = 3 days average demand.
+         If Admin configured safety stock:
+         → use configured value
+
+         Otherwise:
+         → 3 days of average sales
       =================================================== */
 
       const effectiveSafetyStock =
-        configuredSafetyStock >
-        0
+        configuredSafetyStock > 0
           ? configuredSafetyStock
           : round3(
               averageDailySales *
@@ -502,8 +572,7 @@ export async function POST() {
             );
 
       /* ===================================================
-         DEFAULT:
-         USE MANUAL FALLBACK
+         DEFAULT FALLBACK
       =================================================== */
 
       let reorderLevelBase =
@@ -513,13 +582,16 @@ export async function POST() {
         true;
 
       /* ===================================================
-         ENOUGH HISTORY:
-         CALCULATE AUTO REORDER LEVEL
+         AUTO CALCULATION
+
+         Reorder Level
+         =
+         Average Daily Sales × Lead Time
+         +
+         Safety Stock
       =================================================== */
 
-      if (
-        enoughHistory
-      ) {
+      if (enoughHistory) {
         reorderLevelBase =
           Math.ceil(
             averageDailySales *
@@ -530,17 +602,13 @@ export async function POST() {
         usedManualFallback =
           false;
 
-        calculatedCount +=
-          1;
+        calculatedCount += 1;
       } else {
-        fallbackCount +=
-          1;
+        fallbackCount += 1;
       }
 
       /* ===================================================
-         SAVE RESULT
-
-         Individual autocommit update.
+         SAVE CALCULATED RESULT
       =================================================== */
 
       await connection.execute(
@@ -548,11 +616,9 @@ export async function POST() {
           UPDATE medicine_inventory_settings
 
           SET
-            auto_reorder_level_base =
-              ?,
+            auto_reorder_level_base = ?,
 
-            last_average_daily_sales =
-              ?,
+            last_average_daily_sales = ?,
 
             last_calculated_at =
               NOW()
@@ -562,12 +628,14 @@ export async function POST() {
         `,
         [
           reorderLevelBase,
-
           averageDailySales,
-
           setting.medicine_id,
         ],
       );
+
+      /* ===================================================
+         RESPONSE ITEM
+      =================================================== */
 
       results.push({
         medicineCode:
@@ -605,37 +673,69 @@ export async function POST() {
       });
     }
 
-    return NextResponse.json({
-      success: true,
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
 
-      message:
-        "Auto reorder levels recalculated successfully.",
+    return NextResponse.json(
+      {
+        success: true,
 
-      data: {
-        totalAutoMedicines:
-          autoRows.length,
+        message:
+          "Auto reorder levels recalculated successfully.",
 
-        calculatedCount,
+        data: {
+          totalAutoMedicines:
+            autoRows.length,
 
-        fallbackCount,
+          calculatedCount,
 
-        results,
+          fallbackCount,
+
+          results,
+
+          recalculatedBy: {
+            userId:
+              currentAdmin.userId,
+
+            fullName:
+              currentAdmin.fullName,
+          },
+        },
       },
-    });
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
     console.error(
       "Auto reorder calculation error:",
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to recalculate auto reorder levels.",
+          "Failed to recalculate auto reorder levels.",
       },
       {
         status: 500,
@@ -643,12 +743,10 @@ export async function POST() {
     );
   } finally {
     /* =====================================================
-       RELEASE NAMED LOCK
+       RELEASE MYSQL ADVISORY LOCK
     ===================================================== */
 
-    if (
-      advisoryLockAcquired
-    ) {
+    if (advisoryLockAcquired) {
       try {
         await connection.execute(
           `
@@ -658,9 +756,7 @@ export async function POST() {
               )
           `,
         );
-      } catch (
-        releaseError
-      ) {
+      } catch (releaseError) {
         console.error(
           "Failed to release reorder calculation lock:",
           releaseError,

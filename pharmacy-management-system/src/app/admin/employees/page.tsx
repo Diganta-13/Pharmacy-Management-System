@@ -4,14 +4,14 @@ import {
   useEffect,
   useMemo,
   useState,
-} from "react";
-
-import type {
-  FormEvent,
-  ReactNode,
+  type FormEvent,
+  type ReactNode,
 } from "react";
 
 import {
+  Eye,
+  EyeOff,
+  KeyRound,
   Loader2,
   Pencil,
   Plus,
@@ -46,22 +46,34 @@ type UserStatus =
 
 type Employee = {
   id: string;
+
   databaseId: number;
-  userId: number | null;
+
+  userId:
+    | number
+    | null;
 
   name: string;
+
   phone: string;
+
   email: string;
 
-  role: SystemRole | null;
+  role:
+    | SystemRole
+    | null;
+
   roleLabel: string;
 
   designation: string;
 
   shift: EmployeeShift;
+
   shiftLabel: string;
 
-  joiningDate: string | null;
+  joiningDate:
+    | string
+    | null;
 
   salary: number;
 
@@ -70,54 +82,74 @@ type Employee = {
   emergencyContact: string;
 
   status: EmploymentStatus;
+
   statusLabel: string;
 
-  userStatus: UserStatus | null;
+  userStatus:
+    | UserStatus
+    | null;
 
   hasLoginAccount: boolean;
 };
 
 type RoleOption = {
   id: number;
+
   value: SystemRole;
+
   label: string;
+
   description: string;
 };
 
 type EmployeeSummary = {
   totalEmployees: number;
+
   activeEmployees: number;
+
   inactiveEmployees: number;
+
   monthlyPayroll: number;
 };
 
 type EmployeesApiResponse = {
   success: boolean;
+
   message?: string;
 
   data?: {
     summary: EmployeeSummary;
+
     employees: Employee[];
+
     roles: RoleOption[];
   };
 };
 
 type MutationApiResponse = {
   success: boolean;
+
   message?: string;
 };
 
 type EmployeeForm = {
   name: string;
+
   email: string;
+
   phone: string;
+
   password: string;
 
-  role: SystemRole | "";
+  role:
+    | SystemRole
+    | "";
 
   designation: string;
 
-  shift: EmployeeShift | "";
+  shift:
+    | EmployeeShift
+    | "";
 
   joiningDate: string;
 
@@ -134,31 +166,44 @@ type EmployeeForm = {
 
 const emptySummary: EmployeeSummary = {
   totalEmployees: 0,
+
   activeEmployees: 0,
+
   inactiveEmployees: 0,
+
   monthlyPayroll: 0,
 };
 
 function createEmptyForm(): EmployeeForm {
   return {
     name: "",
+
     email: "",
+
     phone: "",
+
     password: "",
 
-    role: "PHARMACIST",
+    role:
+      "PHARMACIST",
 
-    designation: "Pharmacist",
+    designation:
+      "Pharmacist",
 
-    shift: "FULL_DAY",
+    shift:
+      "FULL_DAY",
 
-    joiningDate: "",
+    joiningDate:
+      "",
 
-    salary: "",
+    salary:
+      "",
 
-    address: "",
+    address:
+      "",
 
-    emergencyContact: "",
+    emergencyContact:
+      "",
   };
 }
 
@@ -172,28 +217,38 @@ function formatMoney(
   return value.toLocaleString(
     "en-US",
     {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
+      minimumFractionDigits:
+        0,
+
+      maximumFractionDigits:
+        2,
     },
   );
 }
 
 function formatDate(
-  value: string | null,
+  value:
+    | string
+    | null,
 ) {
   if (!value) {
     return "—";
   }
 
   const datePart =
-    value.slice(0, 10);
+    value.slice(
+      0,
+      10,
+    );
 
   const [
     year,
     month,
     day,
   ] =
-    datePart.split("-");
+    datePart.split(
+      "-",
+    );
 
   if (
     !year ||
@@ -220,9 +275,13 @@ function getInitial(
 }
 
 function getRoleBadgeClass(
-  role: SystemRole | null,
+  role:
+    | SystemRole
+    | null,
 ) {
-  if (role === "ADMIN") {
+  if (
+    role === "ADMIN"
+  ) {
     return "border-violet-200 bg-violet-50 text-violet-700";
   }
 
@@ -234,17 +293,25 @@ function getRoleBadgeClass(
 ========================================================= */
 
 export default function EmployeesPage() {
+  /* =======================================================
+     DATA
+  ======================================================= */
+
   const [
     employees,
     setEmployees,
   ] =
-    useState<Employee[]>([]);
+    useState<Employee[]>(
+      [],
+    );
 
   const [
     roles,
     setRoles,
   ] =
-    useState<RoleOption[]>([]);
+    useState<
+      RoleOption[]
+    >([]);
 
   const [
     summary,
@@ -253,6 +320,10 @@ export default function EmployeesPage() {
     useState<EmployeeSummary>(
       emptySummary,
     );
+
+  /* =======================================================
+     SEARCH / PAGE STATE
+  ======================================================= */
 
   const [
     searchTerm,
@@ -273,7 +344,7 @@ export default function EmployeesPage() {
     useState("");
 
   /* =======================================================
-     MODAL
+     EMPLOYEE MODAL
   ======================================================= */
 
   const [
@@ -311,16 +382,100 @@ export default function EmployeesPage() {
     useState("");
 
   /* =======================================================
-     ACTION LOADING
+     ADD EMPLOYEE PASSWORD
+  ======================================================= */
+
+  const [
+    showAddPassword,
+    setShowAddPassword,
+  ] =
+    useState(false);
+
+  /* =======================================================
+     RESET PASSWORD
+  ======================================================= */
+
+  const [
+    resetPassword,
+    setResetPassword,
+  ] =
+    useState("");
+
+  const [
+    confirmResetPassword,
+    setConfirmResetPassword,
+  ] =
+    useState("");
+
+  const [
+    showResetPassword,
+    setShowResetPassword,
+  ] =
+    useState(false);
+
+  const [
+    showConfirmResetPassword,
+    setShowConfirmResetPassword,
+  ] =
+    useState(false);
+
+  const [
+    isResettingPassword,
+    setIsResettingPassword,
+  ] =
+    useState(false);
+
+  const [
+    resetPasswordError,
+    setResetPasswordError,
+  ] =
+    useState("");
+
+  const [
+    resetPasswordSuccess,
+    setResetPasswordSuccess,
+  ] =
+    useState("");
+
+  /* =======================================================
+     ROW ACTION LOADING
   ======================================================= */
 
   const [
     actionLoading,
     setActionLoading,
   ] =
-    useState<string | null>(
-      null,
+    useState<
+      string | null
+    >(null);
+
+  /* =======================================================
+     RESET PASSWORD FORM STATE
+  ======================================================= */
+
+  function clearPasswordResetState() {
+    setResetPassword("");
+
+    setConfirmResetPassword(
+      "",
     );
+
+    setShowResetPassword(
+      false,
+    );
+
+    setShowConfirmResetPassword(
+      false,
+    );
+
+    setResetPasswordError(
+      "",
+    );
+
+    setResetPasswordSuccess(
+      "",
+    );
+  }
 
   /* =======================================================
      LOAD EMPLOYEES
@@ -331,14 +486,17 @@ export default function EmployeesPage() {
       await fetch(
         "/api/employees",
         {
-          method: "GET",
-          cache: "no-store",
+          method:
+            "GET",
+
+          cache:
+            "no-store",
         },
       );
 
-    const result:
-      EmployeesApiResponse =
-      await response.json();
+    const result =
+      (await response.json()) as
+        EmployeesApiResponse;
 
     if (
       !response.ok ||
@@ -352,7 +510,8 @@ export default function EmployeesPage() {
     }
 
     setEmployees(
-      result.data.employees,
+      result.data
+        .employees,
     );
 
     setRoles(
@@ -369,26 +528,34 @@ export default function EmployeesPage() {
   ======================================================= */
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
 
     async function load() {
       try {
-        setIsLoading(true);
+        setIsLoading(
+          true,
+        );
 
-        setPageError("");
+        setPageError(
+          "",
+        );
 
         const response =
           await fetch(
             "/api/employees",
             {
-              method: "GET",
-              cache: "no-store",
+              method:
+                "GET",
+
+              cache:
+                "no-store",
             },
           );
 
-        const result:
-          EmployeesApiResponse =
-          await response.json();
+        const result =
+          (await response.json()) as
+            EmployeesApiResponse;
 
         if (
           !response.ok ||
@@ -406,7 +573,8 @@ export default function EmployeesPage() {
         }
 
         setEmployees(
-          result.data.employees,
+          result.data
+            .employees,
         );
 
         setRoles(
@@ -427,13 +595,16 @@ export default function EmployeesPage() {
         );
 
         setPageError(
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
             : "Failed to load employees.",
         );
       } finally {
         if (!cancelled) {
-          setIsLoading(false);
+          setIsLoading(
+            false,
+          );
         }
       }
     }
@@ -441,7 +612,8 @@ export default function EmployeesPage() {
     void load();
 
     return () => {
-      cancelled = true;
+      cancelled =
+        true;
     };
   }, []);
 
@@ -450,61 +622,91 @@ export default function EmployeesPage() {
   ======================================================= */
 
   const filteredEmployees =
-    useMemo(() => {
-      const search =
-        searchTerm
-          .trim()
-          .toLowerCase();
+    useMemo(
+      () => {
+        const search =
+          searchTerm
+            .trim()
+            .toLowerCase();
 
-      if (!search) {
-        return employees;
-      }
+        if (!search) {
+          return employees;
+        }
 
-      return employees.filter(
-        (employee) => {
-          const values = [
-            employee.id,
-            employee.name,
-            employee.phone,
-            employee.email,
-            employee.roleLabel,
-            employee.role ?? "",
-            employee.designation,
-            employee.shiftLabel,
-            employee.statusLabel,
-          ];
+        return employees.filter(
+          (
+            employee,
+          ) => {
+            const values = [
+              employee.id,
 
-          return values.some(
-            (value) =>
-              value
-                .toLowerCase()
-                .includes(search),
-          );
-        },
-      );
-    }, [
-      employees,
-      searchTerm,
-    ]);
+              employee.name,
+
+              employee.phone,
+
+              employee.email,
+
+              employee.roleLabel,
+
+              employee.role ??
+                "",
+
+              employee.designation,
+
+              employee.shiftLabel,
+
+              employee.statusLabel,
+            ];
+
+            return values.some(
+              (
+                value,
+              ) =>
+                value
+                  .toLowerCase()
+                  .includes(
+                    search,
+                  ),
+            );
+          },
+        );
+      },
+      [
+        employees,
+        searchTerm,
+      ],
+    );
 
   /* =======================================================
-     ADD MODAL
+     OPEN ADD MODAL
   ======================================================= */
 
   function openAddModal() {
-    setEditingEmployee(null);
+    setEditingEmployee(
+      null,
+    );
 
     setForm(
       createEmptyForm(),
     );
 
-    setModalError("");
+    setShowAddPassword(
+      false,
+    );
 
-    setIsModalOpen(true);
+    clearPasswordResetState();
+
+    setModalError(
+      "",
+    );
+
+    setIsModalOpen(
+      true,
+    );
   }
 
   /* =======================================================
-     EDIT MODAL
+     OPEN EDIT MODAL
   ======================================================= */
 
   function openEditModal(
@@ -524,7 +726,8 @@ export default function EmployeesPage() {
       phone:
         employee.phone,
 
-      password: "",
+      password:
+        "",
 
       role:
         employee.role ??
@@ -552,25 +755,54 @@ export default function EmployeesPage() {
         employee.emergencyContact,
     });
 
-    setModalError("");
+    setShowAddPassword(
+      false,
+    );
 
-    setIsModalOpen(true);
+    clearPasswordResetState();
+
+    setModalError(
+      "",
+    );
+
+    setIsModalOpen(
+      true,
+    );
   }
 
+  /* =======================================================
+     CLOSE MODAL
+  ======================================================= */
+
   function closeModal() {
-    if (isSaving) {
+    if (
+      isSaving ||
+      isResettingPassword
+    ) {
       return;
     }
 
-    setIsModalOpen(false);
+    setIsModalOpen(
+      false,
+    );
 
-    setEditingEmployee(null);
+    setEditingEmployee(
+      null,
+    );
 
     setForm(
       createEmptyForm(),
     );
 
-    setModalError("");
+    setShowAddPassword(
+      false,
+    );
+
+    clearPasswordResetState();
+
+    setModalError(
+      "",
+    );
   }
 
   /* =======================================================
@@ -590,7 +822,9 @@ export default function EmployeesPage() {
       form.phone.trim();
 
     const salary =
-      Number(form.salary);
+      Number(
+        form.salary,
+      );
 
     if (!name) {
       window.alert(
@@ -624,14 +858,29 @@ export default function EmployeesPage() {
       return false;
     }
 
-    /* Password required only when adding */
+    /* =====================================================
+       PASSWORD REQUIRED ONLY FOR NEW EMPLOYEE
+    ===================================================== */
 
     if (
       !editingEmployee &&
-      form.password.length < 8
+      form.password
+        .length < 8
     ) {
       window.alert(
         "Password must be at least 8 characters long.",
+      );
+
+      return false;
+    }
+
+    if (
+      !editingEmployee &&
+      form.password
+        .length > 72
+    ) {
+      window.alert(
+        "Password cannot exceed 72 characters.",
       );
 
       return false;
@@ -653,7 +902,9 @@ export default function EmployeesPage() {
       return false;
     }
 
-    if (!form.joiningDate) {
+    if (
+      !form.joiningDate
+    ) {
       window.alert(
         "Joining date is required.",
       );
@@ -662,8 +913,11 @@ export default function EmployeesPage() {
     }
 
     if (
-      form.salary.trim() === "" ||
-      !Number.isFinite(salary) ||
+      form.salary.trim() ===
+        "" ||
+      !Number.isFinite(
+        salary,
+      ) ||
       salary < 0
     ) {
       window.alert(
@@ -674,7 +928,8 @@ export default function EmployeesPage() {
     }
 
     if (
-      form.emergencyContact.trim() &&
+      form.emergencyContact
+        .trim() &&
       !/^01\d{9}$/.test(
         form.emergencyContact.trim(),
       )
@@ -690,7 +945,7 @@ export default function EmployeesPage() {
   }
 
   /* =======================================================
-     ADD / EDIT SUBMIT
+     ADD / EDIT EMPLOYEE
   ======================================================= */
 
   async function handleSubmit(
@@ -701,15 +956,20 @@ export default function EmployeesPage() {
 
     if (
       isSaving ||
+      isResettingPassword ||
       !validateEmployee()
     ) {
       return;
     }
 
     try {
-      setIsSaving(true);
+      setIsSaving(
+        true,
+      );
 
-      setModalError("");
+      setModalError(
+        "",
+      );
 
       const payload = {
         name:
@@ -769,6 +1029,7 @@ export default function EmployeesPage() {
                   ? payload
                   : {
                       ...payload,
+
                       password:
                         form.password,
                     },
@@ -776,9 +1037,9 @@ export default function EmployeesPage() {
           },
         );
 
-      const result:
-        MutationApiResponse =
-        await response.json();
+      const result =
+        (await response.json()) as
+          MutationApiResponse;
 
       if (
         !response.ok ||
@@ -792,16 +1053,43 @@ export default function EmployeesPage() {
 
       await loadEmployees();
 
-      closeModal();
+      const successMessage =
+        result.message ||
+        (
+          editingEmployee
+            ? "Employee updated successfully."
+            : "Employee added successfully."
+        );
+
+      /* ===================================================
+         CLOSE MODAL AFTER SUCCESS
+      =================================================== */
+
+      setIsModalOpen(
+        false,
+      );
+
+      setEditingEmployee(
+        null,
+      );
+
+      setForm(
+        createEmptyForm(),
+      );
+
+      setShowAddPassword(
+        false,
+      );
+
+      clearPasswordResetState();
 
       window.alert(
-        editingEmployee
-          ? "Employee updated successfully."
-          : "Employee added successfully.",
+        successMessage,
       );
     } catch (error) {
       const message =
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Employee operation failed.";
 
@@ -813,7 +1101,182 @@ export default function EmployeesPage() {
         message,
       );
     } finally {
-      setIsSaving(false);
+      setIsSaving(
+        false,
+      );
+    }
+  }
+
+  /* =======================================================
+     RESET EMPLOYEE LOGIN PASSWORD
+  ======================================================= */
+
+  async function handleResetPassword() {
+    if (
+      !editingEmployee ||
+      isResettingPassword ||
+      isSaving
+    ) {
+      return;
+    }
+
+    setResetPasswordError(
+      "",
+    );
+
+    setResetPasswordSuccess(
+      "",
+    );
+
+    /* =====================================================
+       ACCOUNT CHECK
+    ===================================================== */
+
+    if (
+      !editingEmployee
+        .hasLoginAccount
+    ) {
+      setResetPasswordError(
+        "This employee does not have a linked login account.",
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       NEW PASSWORD
+    ===================================================== */
+
+    if (
+      resetPassword.length <
+      8
+    ) {
+      setResetPasswordError(
+        "New password must be at least 8 characters long.",
+      );
+
+      return;
+    }
+
+    if (
+      resetPassword.length >
+      72
+    ) {
+      setResetPasswordError(
+        "Password cannot exceed 72 characters.",
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       CONFIRM PASSWORD
+    ===================================================== */
+
+    if (
+      !confirmResetPassword
+    ) {
+      setResetPasswordError(
+        "Please confirm the new password.",
+      );
+
+      return;
+    }
+
+    if (
+      resetPassword !==
+      confirmResetPassword
+    ) {
+      setResetPasswordError(
+        "New password and confirm password do not match.",
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       CONFIRM ACTION
+    ===================================================== */
+
+    const confirmed =
+      window.confirm(
+        `Reset login password for ${editingEmployee.name}?`,
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsResettingPassword(
+        true,
+      );
+
+      const response =
+        await fetch(
+          `/api/employees/${editingEmployee.databaseId}/password`,
+          {
+            method:
+              "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                password:
+                  resetPassword,
+              }),
+          },
+        );
+
+      const result =
+        (await response.json()) as
+          MutationApiResponse;
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Failed to reset employee password.",
+        );
+      }
+
+      setResetPassword(
+        "",
+      );
+
+      setConfirmResetPassword(
+        "",
+      );
+
+      setShowResetPassword(
+        false,
+      );
+
+      setShowConfirmResetPassword(
+        false,
+      );
+
+      setResetPasswordSuccess(
+        result.message ||
+          "Employee password reset successfully.",
+      );
+    } catch (error) {
+      setResetPasswordError(
+        error instanceof
+          Error
+          ? error.message
+          : "Failed to reset employee password.",
+      );
+    } finally {
+      setIsResettingPassword(
+        false,
+      );
     }
   }
 
@@ -833,7 +1296,8 @@ export default function EmployeesPage() {
 
     const confirmed =
       window.confirm(
-        nextStatus === "INACTIVE"
+        nextStatus ===
+        "INACTIVE"
           ? `Deactivate ${employee.name}? Their login account will also be disabled.`
           : `Activate ${employee.name}? Their login account will also be enabled.`,
       );
@@ -854,7 +1318,8 @@ export default function EmployeesPage() {
         await fetch(
           `/api/employees/${employee.databaseId}`,
           {
-            method: "PUT",
+            method:
+              "PUT",
 
             headers: {
               "Content-Type":
@@ -869,9 +1334,9 @@ export default function EmployeesPage() {
           },
         );
 
-      const result:
-        MutationApiResponse =
-        await response.json();
+      const result =
+        (await response.json()) as
+          MutationApiResponse;
 
       if (
         !response.ok ||
@@ -891,7 +1356,8 @@ export default function EmployeesPage() {
       );
     } catch (error) {
       window.alert(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Failed to change employee status.",
       );
@@ -935,9 +1401,9 @@ export default function EmployeesPage() {
           },
         );
 
-      const result:
-        MutationApiResponse =
-        await response.json();
+      const result =
+        (await response.json()) as
+          MutationApiResponse;
 
       if (
         !response.ok ||
@@ -957,7 +1423,8 @@ export default function EmployeesPage() {
       );
     } catch (error) {
       window.alert(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Failed to resign employee.",
       );
@@ -975,11 +1442,11 @@ export default function EmployeesPage() {
   return (
     <>
       <div className="mx-auto w-full max-w-[1600px] space-y-4">
-
-        {/* SUMMARY */}
+        {/* =================================================
+            SUMMARY
+        ================================================= */}
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-
           <StatCard
             label="Total Employees"
             value={
@@ -1015,15 +1482,14 @@ export default function EmployeesPage() {
             className="border-amber-200 bg-amber-50/70"
             valueClassName="text-amber-700"
           />
-
         </section>
 
-        {/* SEARCH + ADD */}
+        {/* =================================================
+            SEARCH + ADD
+        ================================================= */}
 
         <section className="flex flex-col gap-3 sm:flex-row">
-
           <div className="relative flex-1">
-
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
             <input
@@ -1035,13 +1501,13 @@ export default function EmployeesPage() {
                 event,
               ) =>
                 setSearchTerm(
-                  event.target.value,
+                  event.target
+                    .value,
                 )
               }
               placeholder="Search by name, ID, phone, email, role or shift..."
               className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 text-[12px] text-slate-700 shadow-sm outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
             />
-
           </div>
 
           <button
@@ -1055,8 +1521,11 @@ export default function EmployeesPage() {
 
             Add Employee
           </button>
-
         </section>
+
+        {/* =================================================
+            PAGE ERROR
+        ================================================= */}
 
         {pageError ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[11px] text-rose-700">
@@ -1064,18 +1533,15 @@ export default function EmployeesPage() {
           </div>
         ) : null}
 
-        {/* TABLE */}
+        {/* =================================================
+            TABLE
+        ================================================= */}
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-
           <div className="overflow-x-auto">
-
             <table className="w-full min-w-[1350px]">
-
               <thead>
-
                 <tr className="border-b border-slate-200 bg-slate-50/80">
-
                   <TableHead>
                     ID
                   </TableHead>
@@ -1115,39 +1581,32 @@ export default function EmployeesPage() {
                   <TableHead>
                     Action
                   </TableHead>
-
                 </tr>
-
               </thead>
 
               <tbody>
-
                 {isLoading ? (
-
                   <tr>
-
                     <td
-                      colSpan={10}
+                      colSpan={
+                        10
+                      }
                       className="px-5 py-16 text-center"
                     >
-
                       <Loader2 className="mx-auto h-7 w-7 animate-spin text-sky-600" />
 
                       <p className="mt-3 text-[12px] font-medium text-slate-700">
-                        Loading employees...
+                        Loading
+                        employees...
                       </p>
-
                     </td>
-
                   </tr>
-
                 ) : (
                   <>
                     {filteredEmployees.map(
                       (
                         employee,
                       ) => {
-
                         const statusLoading =
                           actionLoading ===
                           `status-${employee.databaseId}`;
@@ -1163,21 +1622,20 @@ export default function EmployeesPage() {
                             }
                             className="border-b border-slate-100 transition last:border-0 hover:bg-slate-50/60"
                           >
+                            {/* ID */}
 
                             <td className="px-4 py-4">
-
                               <span className="font-mono text-[10px] font-medium text-slate-500">
                                 {
                                   employee.id
                                 }
                               </span>
-
                             </td>
 
+                            {/* NAME */}
+
                             <td className="px-4 py-4">
-
                               <div className="flex items-center gap-3">
-
                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[12px] font-semibold text-sky-700">
                                   {getInitial(
                                     employee.name,
@@ -1185,7 +1643,6 @@ export default function EmployeesPage() {
                                 </div>
 
                                 <div className="min-w-0">
-
                                   <p className="max-w-[180px] truncate text-[12px] font-semibold text-slate-900">
                                     {
                                       employee.name
@@ -1199,45 +1656,40 @@ export default function EmployeesPage() {
                                       }
                                     </p>
                                   ) : null}
-
                                 </div>
-
                               </div>
-
                             </td>
+
+                            {/* PHONE */}
 
                             <td className="px-4 py-4 text-[10px] text-slate-600">
-                              {
-                                employee.phone ||
-                                "—"
-                              }
+                              {employee.phone ||
+                                "—"}
                             </td>
 
-                            <td className="px-4 py-4">
+                            {/* EMAIL */}
 
+                            <td className="px-4 py-4">
                               <p className="max-w-[220px] truncate text-[10px] text-slate-500">
-                                {
-                                  employee.email ||
-                                  "—"
-                                }
+                                {employee.email ||
+                                  "—"}
                               </p>
-
                             </td>
 
-                            <td className="px-4 py-4">
+                            {/* ROLE */}
 
+                            <td className="px-4 py-4">
                               <span
                                 className={`inline-flex rounded-full border px-2.5 py-1 text-[9px] font-medium ${getRoleBadgeClass(
                                   employee.role,
                                 )}`}
                               >
-                                {
-                                  employee.roleLabel ||
-                                  "—"
-                                }
+                                {employee.roleLabel ||
+                                  "—"}
                               </span>
-
                             </td>
+
+                            {/* SHIFT */}
 
                             <td className="px-4 py-4 text-[10px] text-slate-600">
                               {
@@ -1245,25 +1697,28 @@ export default function EmployeesPage() {
                               }
                             </td>
 
+                            {/* JOINING DATE */}
+
                             <td className="px-4 py-4 text-[10px] text-slate-500">
                               {formatDate(
                                 employee.joiningDate,
                               )}
                             </td>
 
-                            <td className="px-4 py-4">
+                            {/* SALARY */}
 
+                            <td className="px-4 py-4">
                               <span className="text-[11px] font-semibold text-emerald-700">
                                 ৳
                                 {formatMoney(
                                   employee.salary,
                                 )}
                               </span>
-
                             </td>
 
-                            <td className="px-4 py-4">
+                            {/* STATUS */}
 
+                            <td className="px-4 py-4">
                               <span
                                 className={`inline-flex rounded-full px-2.5 py-1 text-[9px] font-medium ${
                                   employee.status ===
@@ -1272,20 +1727,17 @@ export default function EmployeesPage() {
                                     : "bg-slate-200 text-slate-600"
                                 }`}
                               >
-                                {
-                                  employee.status ===
-                                  "ACTIVE"
-                                    ? "Active"
-                                    : "Inactive"
-                                }
+                                {employee.status ===
+                                "ACTIVE"
+                                  ? "Active"
+                                  : "Inactive"}
                               </span>
-
                             </td>
 
+                            {/* ACTION */}
+
                             <td className="px-4 py-4">
-
                               <div className="flex items-center gap-1">
-
                                 {/* EDIT */}
 
                                 <button
@@ -1331,7 +1783,6 @@ export default function EmployeesPage() {
                                       : "text-emerald-600 hover:bg-emerald-50"
                                   }`}
                                 >
-
                                   {statusLoading ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                   ) : employee.status ===
@@ -1340,7 +1791,6 @@ export default function EmployeesPage() {
                                   ) : (
                                     <UserRoundCheck className="h-3.5 w-3.5" />
                                   )}
-
                                 </button>
 
                                 {/* RESIGN */}
@@ -1359,19 +1809,14 @@ export default function EmployeesPage() {
                                   title="Resign employee"
                                   className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                                 >
-
                                   {resignLoading ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                   ) : (
                                     <Trash2 className="h-3.5 w-3.5" />
                                   )}
-
                                 </button>
-
                               </div>
-
                             </td>
-
                           </tr>
                         );
                       },
@@ -1379,38 +1824,33 @@ export default function EmployeesPage() {
 
                     {filteredEmployees.length ===
                     0 ? (
-
                       <tr>
-
                         <td
-                          colSpan={10}
+                          colSpan={
+                            10
+                          }
                           className="px-5 py-16 text-center"
                         >
-
                           <p className="text-[12px] font-medium text-slate-700">
-                            No employees found
+                            No employees
+                            found
                           </p>
 
                           <p className="mt-1 text-[10px] text-slate-400">
-                            Add an employee or change your search.
+                            Add an
+                            employee or
+                            change your
+                            search.
                           </p>
-
                         </td>
-
                       </tr>
-
                     ) : null}
                   </>
                 )}
-
               </tbody>
-
             </table>
-
           </div>
-
         </section>
-
       </div>
 
       {/* ===================================================
@@ -1418,17 +1858,14 @@ export default function EmployeesPage() {
       =================================================== */}
 
       {isModalOpen ? (
-
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
-
-          <div className="max-h-[94vh] w-full max-w-[820px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-
-            {/* HEADER */}
+          <div className="max-h-[94vh] w-full max-w-[900px] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            {/* =============================================
+                HEADER
+            ============================================= */}
 
             <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
-
               <div>
-
                 <h2 className="text-base font-semibold text-slate-950">
                   {editingEmployee
                     ? "Edit Employee"
@@ -1437,10 +1874,9 @@ export default function EmployeesPage() {
 
                 <p className="mt-1 text-[10px] text-slate-500">
                   {editingEmployee
-                    ? `Update ${editingEmployee.id} employee information.`
+                    ? `Update ${editingEmployee.id} employee information and login credentials.`
                     : "Create the employee record and login account together."}
                 </p>
-
               </div>
 
               <button
@@ -1449,30 +1885,34 @@ export default function EmployeesPage() {
                   closeModal
                 }
                 disabled={
-                  isSaving
+                  isSaving ||
+                  isResettingPassword
                 }
+                aria-label="Close"
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 disabled:opacity-40"
               >
                 <X className="h-5 w-5" />
               </button>
-
             </div>
+
+            {/* =============================================
+                EMPLOYEE FORM
+            ============================================= */}
 
             <form
               onSubmit={
                 handleSubmit
               }
             >
-
               <div className="grid grid-cols-1 gap-4 p-5 md:grid-cols-2">
-
-                {/* NAME */}
+                {/* =========================================
+                    NAME
+                ========================================= */}
 
                 <FormField
                   label="Employee Name *"
                   className="md:col-span-2"
                 >
-
                   <input
                     type="text"
                     value={
@@ -1485,10 +1925,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
+
                           name:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1497,13 +1942,13 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* EMAIL */}
+                {/* =========================================
+                    EMAIL
+                ========================================= */}
 
                 <FormField label="Email *">
-
                   <input
                     type="email"
                     value={
@@ -1516,10 +1961,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
+
                           email:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1528,13 +1978,13 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* PHONE */}
+                {/* =========================================
+                    PHONE
+                ========================================= */}
 
                 <FormField label="Phone *">
-
                   <input
                     type="text"
                     inputMode="numeric"
@@ -1548,10 +1998,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
+
                           phone:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1560,49 +2015,96 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* PASSWORD - ADD ONLY */}
+                {/* =========================================
+                    INITIAL PASSWORD - ADD ONLY
+                ========================================= */}
 
                 {!editingEmployee ? (
-
                   <FormField label="Login Password *">
+                    <div className="relative">
+                      <input
+                        type={
+                          showAddPassword
+                            ? "text"
+                            : "password"
+                        }
+                        value={
+                          form.password
+                        }
+                        disabled={
+                          isSaving
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setForm(
+                            (
+                              current,
+                            ) => ({
+                              ...current,
 
-                    <input
-                      type="password"
-                      value={
-                        form.password
-                      }
-                      disabled={
-                        isSaving
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setForm(
-                          (current) => ({
-                            ...current,
-                            password:
-                              event.target.value,
-                          }),
-                        )
-                      }
-                      placeholder="Minimum 8 characters"
-                      autoComplete="new-password"
-                      className={
-                        fieldClass
-                      }
-                    />
+                              password:
+                                event
+                                  .target
+                                  .value,
+                            }),
+                          )
+                        }
+                        placeholder="Minimum 8 characters"
+                        autoComplete="new-password"
+                        className={`${fieldClass} pr-11`}
+                      />
 
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAddPassword(
+                            (
+                              current,
+                            ) =>
+                              !current,
+                          )
+                        }
+                        disabled={
+                          isSaving
+                        }
+                        aria-label={
+                          showAddPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
+                        title={
+                          showAddPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
+                        className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-sky-600 disabled:opacity-40"
+                      >
+                        {showAddPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="mt-1.5 text-[9px] text-slate-400">
+                      Admin sets
+                      the initial
+                      login password
+                      for this
+                      employee.
+                    </p>
                   </FormField>
-
                 ) : null}
 
-                {/* ROLE */}
+                {/* =========================================
+                    ROLE
+                ========================================= */}
 
                 <FormField label="System Role *">
-
                   <select
                     value={
                       form.role
@@ -1612,24 +2114,41 @@ export default function EmployeesPage() {
                     }
                     onChange={(
                       event,
-                    ) =>
+                    ) => {
+                      const newRole =
+                        event
+                          .target
+                          .value as
+                          SystemRole;
+
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           role:
-                            event.target
-                              .value as SystemRole,
+                            newRole,
+
+                          designation:
+                            current.designation ||
+                            (
+                              newRole ===
+                              "ADMIN"
+                                ? "Administrator"
+                                : "Pharmacist"
+                            ),
                         }),
-                      )
-                    }
+                      );
+                    }}
                     className={
                       fieldClass
                     }
                   >
-
                     {roles.map(
-                      (role) => (
+                      (
+                        role,
+                      ) => (
                         <option
                           key={
                             role.id
@@ -1644,15 +2163,14 @@ export default function EmployeesPage() {
                         </option>
                       ),
                     )}
-
                   </select>
-
                 </FormField>
 
-                {/* DESIGNATION */}
+                {/* =========================================
+                    DESIGNATION
+                ========================================= */}
 
                 <FormField label="Designation">
-
                   <input
                     type="text"
                     value={
@@ -1665,11 +2183,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           designation:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1678,13 +2200,13 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* SHIFT */}
+                {/* =========================================
+                    SHIFT
+                ========================================= */}
 
                 <FormField label="Shift *">
-
                   <select
                     value={
                       form.shift
@@ -1696,12 +2218,16 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           shift:
-                            event.target
-                              .value as EmployeeShift,
+                            event
+                              .target
+                              .value as
+                              EmployeeShift,
                         }),
                       )
                     }
@@ -1709,27 +2235,27 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   >
-
                     <option value="FULL_DAY">
                       Full Day
                     </option>
 
                     <option value="MORNING">
-                      Morning Shift
+                      Morning
+                      Shift
                     </option>
 
                     <option value="EVENING">
-                      Evening Shift
+                      Evening
+                      Shift
                     </option>
-
                   </select>
-
                 </FormField>
 
-                {/* JOINING */}
+                {/* =========================================
+                    JOINING DATE
+                ========================================= */}
 
                 <FormField label="Joining Date *">
-
                   <input
                     type="date"
                     value={
@@ -1742,11 +2268,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           joiningDate:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1754,13 +2284,13 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* SALARY */}
+                {/* =========================================
+                    SALARY
+                ========================================= */}
 
                 <FormField label="Monthly Salary (৳) *">
-
                   <input
                     type="number"
                     min="0"
@@ -1775,11 +2305,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           salary:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1788,15 +2322,16 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* EMERGENCY */}
+                {/* =========================================
+                    EMERGENCY CONTACT
+                ========================================= */}
 
                 <FormField label="Emergency Contact">
-
                   <input
                     type="text"
+                    inputMode="numeric"
                     value={
                       form.emergencyContact
                     }
@@ -1807,11 +2342,15 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           emergencyContact:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
@@ -1820,18 +2359,20 @@ export default function EmployeesPage() {
                       fieldClass
                     }
                   />
-
                 </FormField>
 
-                {/* ADDRESS */}
+                {/* =========================================
+                    ADDRESS
+                ========================================= */}
 
                 <FormField
                   label="Address"
                   className="md:col-span-2"
                 >
-
                   <textarea
-                    rows={3}
+                    rows={
+                      3
+                    }
                     value={
                       form.address
                     }
@@ -1842,43 +2383,316 @@ export default function EmployeesPage() {
                       event,
                     ) =>
                       setForm(
-                        (current) => ({
+                        (
+                          current,
+                        ) => ({
                           ...current,
 
                           address:
-                            event.target.value,
+                            event
+                              .target
+                              .value,
                         }),
                       )
                     }
                     placeholder="Employee address"
                     className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100"
                   />
-
                 </FormField>
 
+                {/* =========================================
+                    RESET LOGIN PASSWORD - EDIT ONLY
+                ========================================= */}
+
+                {editingEmployee ? (
+                  <div className="md:col-span-2">
+                    <div className="rounded-2xl border border-sky-200 bg-sky-50/50 p-4">
+                      {/* HEADER */}
+
+                      <div className="mb-4 flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                          <KeyRound className="h-5 w-5" />
+                        </div>
+
+                        <div>
+                          <p className="text-[12px] font-semibold text-slate-900">
+                            Reset
+                            Login
+                            Password
+                          </p>
+
+                          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                            Set a new
+                            login
+                            password
+                            for{" "}
+                            <span className="font-semibold text-slate-700">
+                              {
+                                editingEmployee.name
+                              }
+                            </span>
+                            . The
+                            current
+                            password is
+                            never
+                            displayed.
+                          </p>
+                        </div>
+                      </div>
+
+                      {!editingEmployee.hasLoginAccount ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[10px] text-amber-700">
+                          This employee
+                          does not have
+                          a linked
+                          login
+                          account.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            {/* NEW PASSWORD */}
+
+                            <div>
+                              <label className="mb-2 block text-[10px] font-medium text-slate-700">
+                                New
+                                Password
+                              </label>
+
+                              <div className="relative">
+                                <input
+                                  type={
+                                    showResetPassword
+                                      ? "text"
+                                      : "password"
+                                  }
+                                  value={
+                                    resetPassword
+                                  }
+                                  disabled={
+                                    isResettingPassword ||
+                                    isSaving
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) => {
+                                    setResetPassword(
+                                      event
+                                        .target
+                                        .value,
+                                    );
+
+                                    setResetPasswordError(
+                                      "",
+                                    );
+
+                                    setResetPasswordSuccess(
+                                      "",
+                                    );
+                                  }}
+                                  placeholder="Minimum 8 characters"
+                                  autoComplete="new-password"
+                                  className={`${fieldClass} pr-11`}
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowResetPassword(
+                                      (
+                                        current,
+                                      ) =>
+                                        !current,
+                                    )
+                                  }
+                                  disabled={
+                                    isResettingPassword
+                                  }
+                                  aria-label={
+                                    showResetPassword
+                                      ? "Hide new password"
+                                      : "Show new password"
+                                  }
+                                  title={
+                                    showResetPassword
+                                      ? "Hide password"
+                                      : "Show password"
+                                  }
+                                  className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-sky-600 disabled:opacity-40"
+                                >
+                                  {showResetPassword ? (
+                                    <EyeOff className="h-4 w-4" />
+                                  ) : (
+                                    <Eye className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* CONFIRM */}
+
+                            <div>
+                              <label className="mb-2 block text-[10px] font-medium text-slate-700">
+                                Confirm
+                                New
+                                Password
+                              </label>
+
+                              <div className="relative">
+                                <input
+                                  type={
+                                    showConfirmResetPassword
+                                      ? "text"
+                                      : "password"
+                                  }
+                                  value={
+                                    confirmResetPassword
+                                  }
+                                  disabled={
+                                    isResettingPassword ||
+                                    isSaving
+                                  }
+                                  onChange={(
+                                    event,
+                                  ) => {
+                                    setConfirmResetPassword(
+                                      event
+                                        .target
+                                        .value,
+                                    );
+
+                                    setResetPasswordError(
+                                      "",
+                                    );
+
+                                    setResetPasswordSuccess(
+                                      "",
+                                    );
+                                  }}
+                                  placeholder="Re-enter new password"
+                                  autoComplete="new-password"
+                                  className={`${fieldClass} pr-11`}
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowConfirmResetPassword(
+                                      (
+                                        current,
+                                      ) =>
+                                        !current,
+                                    )
+                                  }
+                                  disabled={
+                                    isResettingPassword
+                                  }
+                                  aria-label={
+                                    showConfirmResetPassword
+                                      ? "Hide confirm password"
+                                      : "Show confirm password"
+                                  }
+                                  title={
+                                    showConfirmResetPassword
+                                      ? "Hide password"
+                                      : "Show password"
+                                  }
+                                  className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center justify-center text-slate-400 transition hover:text-sky-600 disabled:opacity-40"
+                                >
+                                  {showConfirmResetPassword ? (
+                                    <EyeOff className="h-4 w-4" />
+                                  ) : (
+                                    <Eye className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* ERROR */}
+
+                          {resetPasswordError ? (
+                            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[10px] text-rose-700">
+                              {
+                                resetPasswordError
+                              }
+                            </div>
+                          ) : null}
+
+                          {/* SUCCESS */}
+
+                          {resetPasswordSuccess ? (
+                            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[10px] text-emerald-700">
+                              {
+                                resetPasswordSuccess
+                              }
+                            </div>
+                          ) : null}
+
+                          {/* BUTTON */}
+
+                          <div className="mt-4 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleResetPassword()
+                              }
+                              disabled={
+                                isResettingPassword ||
+                                isSaving ||
+                                !resetPassword ||
+                                !confirmResetPassword
+                              }
+                              className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 text-[10px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isResettingPassword ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+
+                                  Resetting...
+                                </>
+                              ) : (
+                                <>
+                                  <KeyRound className="h-3.5 w-3.5" />
+
+                                  Reset
+                                  Password
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
-              {modalError ? (
+              {/* ===========================================
+                  MODAL ERROR
+              =========================================== */}
 
+              {modalError ? (
                 <div className="mx-5 mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[11px] text-rose-700">
                   {
                     modalError
                   }
                 </div>
-
               ) : null}
 
-              {/* FOOTER */}
+              {/* ===========================================
+                  FOOTER
+              =========================================== */}
 
               <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
-
                 <button
                   type="button"
                   onClick={
                     closeModal
                   }
                   disabled={
-                    isSaving
+                    isSaving ||
+                    isResettingPassword
                   }
                   className="h-10 rounded-xl border border-slate-200 px-4 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
                 >
@@ -1888,11 +2702,11 @@ export default function EmployeesPage() {
                 <button
                   type="submit"
                   disabled={
-                    isSaving
+                    isSaving ||
+                    isResettingPassword
                   }
                   className="inline-flex h-10 min-w-[145px] items-center justify-center gap-2 rounded-xl bg-sky-600 px-5 text-[11px] font-semibold text-white transition hover:bg-sky-700 disabled:bg-sky-400"
                 >
-
                   {isSaving ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -1912,17 +2726,11 @@ export default function EmployeesPage() {
                       Add Employee
                     </>
                   )}
-
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
-
       ) : null}
     </>
   );
@@ -1936,13 +2744,14 @@ const fieldClass =
   "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[11px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-100";
 
 /* =========================================================
-   COMPONENTS
+   TABLE HEAD
 ========================================================= */
 
 function TableHead({
   children,
 }: {
-  children: ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
     <th className="whitespace-nowrap px-4 py-4 text-left text-[10px] font-medium text-slate-500">
@@ -1951,44 +2760,66 @@ function TableHead({
   );
 }
 
+/* =========================================================
+   FORM FIELD
+========================================================= */
+
 function FormField({
   label,
+
   children,
+
   className = "",
 }: {
   label: string;
-  children: ReactNode;
+
+  children:
+    ReactNode;
+
   className?: string;
 }) {
   return (
-    <div className={className}>
-
+    <div
+      className={
+        className
+      }
+    >
       <label className="mb-2 block text-[11px] font-medium text-slate-700">
         {label}
       </label>
 
       {children}
-
     </div>
   );
 }
 
+/* =========================================================
+   STAT CARD
+========================================================= */
+
 function StatCard({
   label,
+
   value,
+
   className = "",
+
   valueClassName = "",
 }: {
   label: string;
-  value: number | string;
+
+  value:
+    | number
+    | string;
+
   className?: string;
+
   valueClassName?: string;
 }) {
   return (
     <article
       className={`min-h-[100px] rounded-2xl border p-4 shadow-sm ${className}`}
     >
-
       <p className="text-[10px] font-medium text-slate-500">
         {label}
       </p>
@@ -1998,7 +2829,6 @@ function StatCard({
       >
         {value}
       </p>
-
     </article>
   );
 }

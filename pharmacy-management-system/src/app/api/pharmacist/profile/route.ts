@@ -11,6 +11,20 @@ import type {
 
 import db from "@/lib/db";
 
+import {
+  requirePharmacist,
+} from "@/lib/current-user";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
+
 /* =========================================================
    TYPES
 ========================================================= */
@@ -37,42 +51,50 @@ type UserStatus =
 interface PharmacistProfileRow
   extends RowDataPacket {
   employee_id: number;
+
   user_id: number;
 
   employee_code: string;
 
   full_name: string;
+
   email: string;
+
   phone: string | null;
 
   role_name: SystemRole;
 
   designation: string | null;
+
   shift: EmployeeShift;
 
   joining_date: string | null;
 
   address: string | null;
-  emergency_contact: string | null;
 
-  employment_status: EmploymentStatus;
+  emergency_contact:
+    | string
+    | null;
+
+  employment_status:
+    EmploymentStatus;
+
   user_status: UserStatus;
 
-  last_login_at: string | null;
-}
-
-interface CurrentPharmacistRow
-  extends RowDataPacket {
-  user_id: number;
-  employee_id: number;
+  last_login_at:
+    | string
+    | null;
 }
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function cleanString(value: unknown) {
-  return typeof value === "string"
+function cleanString(
+  value: unknown,
+) {
+  return typeof value ===
+    "string"
     ? value.trim()
     : "";
 }
@@ -129,121 +151,118 @@ function getEmploymentStatusLabel(
 function isValidBangladeshPhone(
   phone: string,
 ) {
-  return /^01\d{9}$/.test(phone);
+  return /^01\d{9}$/.test(
+    phone,
+  );
 }
 
 /* =========================================================
-   TEMPORARY PHARMACIST RESOLUTION
-
-   Authentication is not DB-connected yet.
-
-   If DEV_PHARMACIST_EMAIL exists:
-   → use that pharmacist.
-
-   Otherwise:
-   → use the first ACTIVE pharmacist.
-
-   Later when authentication is implemented,
-   only this resolution logic needs replacing
-   with session/JWT user identification.
+   AUTH ERROR RESPONSE
 ========================================================= */
 
-async function getDevelopmentPharmacist(
-  connection: PoolConnection,
+function getAuthErrorResponse(
+  error: unknown,
 ) {
-  const developmentEmail =
-    cleanString(
-      process.env.DEV_PHARMACIST_EMAIL,
-    ).toLowerCase();
-
-  let rows: CurrentPharmacistRow[];
-
-  if (developmentEmail) {
-    const [result] =
-      await connection.execute<
-        CurrentPharmacistRow[]
-      >(
-        `
-          SELECT
-            u.id AS user_id,
-            e.id AS employee_id
-
-          FROM users u
-
-          INNER JOIN roles r
-            ON r.id = u.role_id
-
-          INNER JOIN employees e
-            ON e.user_id = u.id
-
-          WHERE
-            r.name = 'PHARMACIST'
-            AND u.email = ?
-            AND u.status = 'ACTIVE'
-            AND e.employment_status = 'ACTIVE'
-
-          LIMIT 1
-        `,
-        [developmentEmail],
-      );
-
-    rows = result;
-  } else {
-    const [result] =
-      await connection.execute<
-        CurrentPharmacistRow[]
-      >(
-        `
-          SELECT
-            u.id AS user_id,
-            e.id AS employee_id
-
-          FROM users u
-
-          INNER JOIN roles r
-            ON r.id = u.role_id
-
-          INNER JOIN employees e
-            ON e.user_id = u.id
-
-          WHERE
-            r.name = 'PHARMACIST'
-            AND u.status = 'ACTIVE'
-            AND e.employment_status = 'ACTIVE'
-
-          ORDER BY
-            e.id ASC
-
-          LIMIT 1
-        `,
-      );
-
-    rows = result;
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
   }
 
-  if (rows.length === 0) {
-    throw new Error(
-      "No active pharmacist account was found.",
-    );
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "PHARMACIST_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Pharmacist access is required.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
   }
-
-  return {
-    userId: Number(
-      rows[0].user_id,
-    ),
-
-    employeeId: Number(
-      rows[0].employee_id,
-    ),
-  };
 }
 
 /* =========================================================
-   LOAD PROFILE
+   LOAD PROFILE BY AUTHENTICATED USER ID
 ========================================================= */
 
 async function getProfileByUserId(
   connection: PoolConnection,
+
   userId: number,
 ) {
   const [rows] =
@@ -253,17 +272,21 @@ async function getProfileByUserId(
       `
         SELECT
           e.id AS employee_id,
+
           u.id AS user_id,
 
           e.employee_code,
 
           u.full_name,
+
           u.email,
+
           u.phone,
 
           r.name AS role_name,
 
           e.designation,
+
           e.shift,
 
           DATE_FORMAT(
@@ -272,9 +295,11 @@ async function getProfileByUserId(
           ) AS joining_date,
 
           e.address,
+
           e.emergency_contact,
 
           e.employment_status,
+
           u.status AS user_status,
 
           DATE_FORMAT(
@@ -285,23 +310,30 @@ async function getProfileByUserId(
         FROM users u
 
         INNER JOIN roles r
-          ON r.id = u.role_id
+          ON r.id =
+             u.role_id
 
         INNER JOIN employees e
-          ON e.user_id = u.id
+          ON e.user_id =
+             u.id
 
         WHERE
           u.id = ?
-          AND r.name = 'PHARMACIST'
+          AND r.name =
+            'PHARMACIST'
 
         LIMIT 1
       `,
-      [userId],
+      [
+        userId,
+      ],
     );
 
-  if (rows.length === 0) {
+  if (
+    rows.length === 0
+  ) {
     throw new Error(
-      "Pharmacist profile was not found.",
+      "PHARMACIST_PROFILE_NOT_FOUND",
     );
   }
 
@@ -309,7 +341,7 @@ async function getProfileByUserId(
 }
 
 /* =========================================================
-   FORMAT RESPONSE
+   FORMAT PROFILE
 ========================================================= */
 
 function formatProfile(
@@ -317,10 +349,14 @@ function formatProfile(
 ) {
   return {
     employeeDatabaseId:
-      Number(row.employee_id),
+      Number(
+        row.employee_id,
+      ),
 
     userId:
-      Number(row.user_id),
+      Number(
+        row.user_id,
+      ),
 
     employeeCode:
       row.employee_code,
@@ -343,7 +379,8 @@ function formatProfile(
       ),
 
     designation:
-      row.designation || "Pharmacist",
+      row.designation ||
+      "Pharmacist",
 
     shift:
       row.shift,
@@ -360,7 +397,8 @@ function formatProfile(
       row.address ?? "",
 
     emergencyContact:
-      row.emergency_contact ?? "",
+      row.emergency_contact ??
+      "",
 
     employmentStatus:
       row.employment_status,
@@ -381,6 +419,10 @@ function formatProfile(
 /* =========================================================
    GET
    /api/pharmacist/profile
+
+   NOW:
+   Profile belongs to the actual logged-in
+   PHARMACIST session user.
 ========================================================= */
 
 export async function GET() {
@@ -388,37 +430,87 @@ export async function GET() {
     await db.getConnection();
 
   try {
+    /* =====================================================
+       AUTHENTICATED PHARMACIST
+    ===================================================== */
+
     const currentPharmacist =
-      await getDevelopmentPharmacist(
+      await requirePharmacist(
         connection,
       );
+
+    /* =====================================================
+       LOAD ONLY THAT USER'S PROFILE
+    ===================================================== */
 
     const profile =
       await getProfileByUserId(
         connection,
+
         currentPharmacist.userId,
       );
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      data:
-        formatProfile(profile),
-    });
+        data:
+          formatProfile(
+            profile,
+          ),
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
     console.error(
       "GET pharmacist profile error:",
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       PROFILE NOT FOUND
+    ===================================================== */
+
+    if (
+      error instanceof
+        Error &&
+      error.message ===
+        "PHARMACIST_PROFILE_NOT_FOUND"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your pharmacist employee profile could not be found.",
+        },
+        {
+          status: 404,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to load pharmacist profile.",
+          "Failed to load pharmacist profile.",
       },
       {
         status: 500,
@@ -433,13 +525,14 @@ export async function GET() {
    PATCH
    /api/pharmacist/profile
 
-   Pharmacist can update only:
-   - Name
+   PHARMACIST CAN UPDATE:
+   - Full Name
    - Phone
    - Address
    - Emergency Contact
 
-   Pharmacist CANNOT update:
+   PHARMACIST CANNOT UPDATE:
+   - Email
    - Employee ID
    - Role
    - Designation
@@ -454,11 +547,60 @@ export async function PATCH(
   const connection =
     await db.getConnection();
 
-  let transactionStarted = false;
+  let transactionStarted =
+    false;
 
   try {
-    const body =
-      await request.json();
+    /* =====================================================
+       AUTHENTICATED PHARMACIST
+
+       Authenticate before accepting any
+       profile mutation.
+    ===================================================== */
+
+    const currentPharmacist =
+      await requirePharmacist(
+        connection,
+      );
+
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body: {
+      fullName?: unknown;
+
+      phone?: unknown;
+
+      address?: unknown;
+
+      emergencyContact?: unknown;
+    };
+
+    try {
+      body =
+        (await request.json()) as {
+          fullName?: unknown;
+
+          phone?: unknown;
+
+          address?: unknown;
+
+          emergencyContact?: unknown;
+        };
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const fullName =
       cleanString(
@@ -481,13 +623,14 @@ export async function PATCH(
       );
 
     /* =====================================================
-       VALIDATION
+       VALIDATION — FULL NAME
     ===================================================== */
 
     if (!fullName) {
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Full name is required.",
         },
@@ -497,10 +640,14 @@ export async function PATCH(
       );
     }
 
-    if (fullName.length > 120) {
+    if (
+      fullName.length >
+      120
+    ) {
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Full name cannot exceed 120 characters.",
         },
@@ -510,10 +657,15 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       VALIDATION — PHONE
+    ===================================================== */
+
     if (!phone) {
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Phone number is required.",
         },
@@ -531,6 +683,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Please enter a valid 11-digit Bangladesh mobile number.",
         },
@@ -540,10 +693,18 @@ export async function PATCH(
       );
     }
 
-    if (address.length > 255) {
+    /* =====================================================
+       VALIDATION — ADDRESS
+    ===================================================== */
+
+    if (
+      address.length >
+      255
+    ) {
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Address cannot exceed 255 characters.",
         },
@@ -552,6 +713,10 @@ export async function PATCH(
         },
       );
     }
+
+    /* =====================================================
+       VALIDATION — EMERGENCY CONTACT
+    ===================================================== */
 
     if (
       emergencyContact &&
@@ -562,6 +727,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Please enter a valid 11-digit emergency contact number.",
         },
@@ -577,15 +743,28 @@ export async function PATCH(
 
     await connection.beginTransaction();
 
-    transactionStarted = true;
+    transactionStarted =
+      true;
 
-    const currentPharmacist =
-      await getDevelopmentPharmacist(
+    /* =====================================================
+       LOAD PROFILE + EMPLOYEE ID
+
+       This guarantees the authenticated
+       pharmacist is linked to an employee record.
+    ===================================================== */
+
+    const existingProfile =
+      await getProfileByUserId(
         connection,
+
+        currentPharmacist.userId,
       );
 
     /* =====================================================
-       LOCK USER
+       LOCK AUTHENTICATED USER
+
+       Another account can never be updated because
+       the user ID comes only from the verified session.
     ===================================================== */
 
     const [userRows] =
@@ -593,11 +772,13 @@ export async function PATCH(
         RowDataPacket[]
       >(
         `
-          SELECT id
+          SELECT
+            id
 
           FROM users
 
-          WHERE id = ?
+          WHERE
+            id = ?
 
           LIMIT 1
 
@@ -613,13 +794,15 @@ export async function PATCH(
     ) {
       await connection.rollback();
 
-      transactionStarted = false;
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
           success: false,
+
           message:
-            "Pharmacist user account was not found.",
+            "Your user account could not be found.",
         },
         {
           status: 404,
@@ -628,50 +811,94 @@ export async function PATCH(
     }
 
     /* =====================================================
-       UPDATE USER DATA
+       UPDATE USERS
+
+       Only editable personal information.
     ===================================================== */
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE users
+    const [
+      userUpdateResult,
+    ] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          UPDATE users
 
-        SET
-          full_name = ?,
-          phone = ?
+          SET
+            full_name = ?,
 
-        WHERE id = ?
-      `,
-      [
-        fullName,
-        phone,
-        currentPharmacist.userId,
-      ],
-    );
+            phone = ?
+
+          WHERE
+            id = ?
+        `,
+        [
+          fullName,
+
+          phone,
+
+          currentPharmacist.userId,
+        ],
+      );
+
+    if (
+      userUpdateResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "PROFILE_USER_UPDATE_FAILED",
+      );
+    }
 
     /* =====================================================
-       UPDATE EMPLOYEE DATA
+       UPDATE EMPLOYEE
+
+       Only editable contact information.
+
+       Role, designation, shift, joining date and
+       status are intentionally NOT updated.
     ===================================================== */
 
-    await connection.execute<
-      ResultSetHeader
-    >(
-      `
-        UPDATE employees
+    const [
+      employeeUpdateResult,
+    ] =
+      await connection.execute<
+        ResultSetHeader
+      >(
+        `
+          UPDATE employees
 
-        SET
-          address = ?,
-          emergency_contact = ?
+          SET
+            address = ?,
 
-        WHERE id = ?
-      `,
-      [
-        address || null,
-        emergencyContact || null,
-        currentPharmacist.employeeId,
-      ],
-    );
+            emergency_contact = ?
+
+          WHERE
+            id = ?
+            AND user_id = ?
+        `,
+        [
+          address ||
+            null,
+
+          emergencyContact ||
+            null,
+
+          existingProfile.employee_id,
+
+          currentPharmacist.userId,
+        ],
+      );
+
+    if (
+      employeeUpdateResult.affectedRows !==
+      1
+    ) {
+      throw new Error(
+        "PROFILE_EMPLOYEE_UPDATE_FAILED",
+      );
+    }
 
     /* =====================================================
        RELOAD UPDATED PROFILE
@@ -680,27 +907,53 @@ export async function PATCH(
     const updatedProfile =
       await getProfileByUserId(
         connection,
+
         currentPharmacist.userId,
       );
 
+    /* =====================================================
+       COMMIT
+    ===================================================== */
+
     await connection.commit();
 
-    transactionStarted = false;
+    transactionStarted =
+      false;
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      message:
-        "Profile updated successfully.",
+        message:
+          "Profile updated successfully.",
 
-      data:
-        formatProfile(
-          updatedProfile,
-        ),
-    });
+        data:
+          formatProfile(
+            updatedProfile,
+          ),
+      },
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
-    if (transactionStarted) {
-      await connection.rollback();
+    /* =====================================================
+       ROLLBACK
+    ===================================================== */
+
+    if (
+      transactionStarted
+    ) {
+      try {
+        await connection.rollback();
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Profile rollback error:",
+          rollbackError,
+        );
+      }
     }
 
     console.error(
@@ -708,14 +961,75 @@ export async function PATCH(
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       PROFILE NOT FOUND
+    ===================================================== */
+
+    if (
+      error instanceof
+        Error &&
+      error.message ===
+        "PHARMACIST_PROFILE_NOT_FOUND"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your pharmacist employee profile could not be found.",
+        },
+        {
+          status: 404,
+        },
+      );
+    }
+
+    /* =====================================================
+       UPDATE FAILURE
+    ===================================================== */
+
+    if (
+      error instanceof
+        Error &&
+      (
+        error.message ===
+          "PROFILE_USER_UPDATE_FAILED" ||
+        error.message ===
+          "PROFILE_EMPLOYEE_UPDATE_FAILED"
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Profile could not be updated. Please try again.",
+        },
+        {
+          status: 500,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
 
         message:
-          error instanceof Error
-            ? error.message
-            : "Failed to update pharmacist profile.",
+          "Failed to update pharmacist profile.",
       },
       {
         status: 500,

@@ -13,8 +13,18 @@ import type {
 import db from "@/lib/db";
 
 import {
-  getCurrentUserId,
+  requireAdmin,
 } from "@/lib/current-user";
+
+/* =========================================================
+   RUNTIME
+========================================================= */
+
+export const runtime =
+  "nodejs";
+
+export const dynamic =
+  "force-dynamic";
 
 /* =========================================================
    TYPES
@@ -23,6 +33,12 @@ import {
 type AdjustmentType =
   | "increase"
   | "decrease";
+
+type BatchStatus =
+  | "ACTIVE"
+  | "DEPLETED"
+  | "EXPIRED"
+  | "BLOCKED";
 
 interface BatchRow
   extends RowDataPacket {
@@ -38,15 +54,123 @@ interface BatchRow
     | number
     | string;
 
-  status:
-    | "ACTIVE"
-    | "DEPLETED"
-    | "EXPIRED"
-    | "BLOCKED";
+  status: BatchStatus;
 }
 
 /* =========================================================
-   POST ADJUSTMENT
+   AUTH ERROR RESPONSE
+========================================================= */
+
+function getAuthErrorResponse(
+  error: unknown,
+) {
+  if (
+    !(error instanceof Error)
+  ) {
+    return null;
+  }
+
+  switch (error.message) {
+    case "AUTHENTICATION_REQUIRED":
+    case "INVALID_OR_EXPIRED_SESSION":
+    case "CURRENT_USER_NOT_FOUND":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Authentication required. Please sign in again.",
+        },
+        {
+          status: 401,
+        },
+      );
+
+    case "USER_ACCOUNT_SUSPENDED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account has been suspended.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "USER_ACCOUNT_INACTIVE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account is inactive.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "SESSION_ROLE_MISMATCH":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account permissions have changed. Please sign in again.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "ADMIN_ACCESS_REQUIRED":
+    case "ACCESS_DENIED":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Administrator access is required to adjust stock.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    case "INVALID_USER_ROLE":
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Your account does not have a valid system role.",
+        },
+        {
+          status: 403,
+        },
+      );
+
+    default:
+      return null;
+  }
+}
+
+/* =========================================================
+   POST
+   /api/stock/adjust
+
+   ADMIN ONLY
+
+   Pharmacist:
+   - may view stock
+   - cannot manually increase/decrease stock
+
+   Admin:
+   - may perform manual adjustment
+   - reason is mandatory
+   - every adjustment is audited
 ========================================================= */
 
 export async function POST(
@@ -55,9 +179,63 @@ export async function POST(
   const connection =
     await db.getConnection();
 
+  let transactionStarted =
+    false;
+
   try {
-    const body =
-      await request.json();
+    /* =====================================================
+       ADMIN AUTHORIZATION
+
+       Do this BEFORE any stock mutation.
+    ===================================================== */
+
+    const currentAdmin =
+      await requireAdmin(
+        connection,
+      );
+
+    /* =====================================================
+       REQUEST BODY
+    ===================================================== */
+
+    let body: {
+      batchId?: unknown;
+
+      type?: unknown;
+
+      quantity?: unknown;
+
+      reason?: unknown;
+    };
+
+    try {
+      body =
+        (await request.json()) as {
+          batchId?: unknown;
+
+          type?: unknown;
+
+          quantity?: unknown;
+
+          reason?: unknown;
+        };
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Invalid request body.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       NORMALIZE INPUT
+    ===================================================== */
 
     const batchId =
       Number(
@@ -65,8 +243,7 @@ export async function POST(
       );
 
     const type =
-      body.type as
-        AdjustmentType;
+      body.type;
 
     const quantity =
       Number(
@@ -75,12 +252,12 @@ export async function POST(
 
     const reason =
       typeof body.reason ===
-        "string"
+      "string"
         ? body.reason.trim()
         : "";
 
     /* =====================================================
-       VALIDATION
+       VALIDATE BATCH
     ===================================================== */
 
     if (
@@ -102,6 +279,10 @@ export async function POST(
       );
     }
 
+    /* =====================================================
+       VALIDATE TYPE
+    ===================================================== */
+
     if (
       type !== "increase" &&
       type !== "decrease"
@@ -118,6 +299,14 @@ export async function POST(
         },
       );
     }
+
+    const adjustmentType:
+      AdjustmentType =
+      type;
+
+    /* =====================================================
+       VALIDATE QUANTITY
+    ===================================================== */
 
     if (
       !Number.isInteger(
@@ -138,6 +327,10 @@ export async function POST(
       );
     }
 
+    /* =====================================================
+       VALIDATE REASON
+    ===================================================== */
+
     if (!reason) {
       return NextResponse.json(
         {
@@ -152,15 +345,37 @@ export async function POST(
       );
     }
 
+    if (
+      reason.length >
+      255
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Adjustment reason cannot exceed 255 characters.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       BEGIN TRANSACTION
+    ===================================================== */
+
     await connection.beginTransaction();
 
-    const userId =
-      await getCurrentUserId(
-        connection,
-      );
+    transactionStarted =
+      true;
 
     /* =====================================================
        LOCK BATCH
+
+       FOR UPDATE prevents two stock adjustments
+       from modifying the same batch simultaneously.
     ===================================================== */
 
     const [rows] =
@@ -170,7 +385,9 @@ export async function POST(
         `
           SELECT
             id,
+
             medicine_id,
+
             batch_no,
 
             DATE_FORMAT(
@@ -179,11 +396,13 @@ export async function POST(
             ) AS expiry_date,
 
             current_quantity_base,
+
             status
 
           FROM medicine_batches
 
-          WHERE id = ?
+          WHERE
+            id = ?
 
           LIMIT 1
 
@@ -194,10 +413,17 @@ export async function POST(
         ],
       );
 
+    /* =====================================================
+       BATCH NOT FOUND
+    ===================================================== */
+
     if (
       rows.length === 0
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -220,12 +446,28 @@ export async function POST(
         batch.current_quantity_base,
       );
 
+    if (
+      !Number.isFinite(
+        currentQuantity,
+      ) ||
+      currentQuantity < 0
+    ) {
+      throw new Error(
+        "INVALID_BATCH_QUANTITY",
+      );
+    }
+
     /* =====================================================
-       SAFETY
+       SAFETY:
+       BLOCKED / EXPIRED BATCH
+
+       Increasing stock in expired/blocked batches
+       is not allowed.
     ===================================================== */
 
     if (
-      type === "increase" &&
+      adjustmentType ===
+        "increase" &&
       (
         batch.status ===
           "BLOCKED" ||
@@ -234,6 +476,9 @@ export async function POST(
       )
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -248,12 +493,21 @@ export async function POST(
       );
     }
 
+    /* =====================================================
+       SAFETY:
+       STOCK CANNOT GO BELOW ZERO
+    ===================================================== */
+
     if (
-      type === "decrease" &&
+      adjustmentType ===
+        "decrease" &&
       quantity >
         currentQuantity
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -268,8 +522,13 @@ export async function POST(
       );
     }
 
+    /* =====================================================
+       CALCULATE CHANGE
+    ===================================================== */
+
     const quantityChange =
-      type === "increase"
+      adjustmentType ===
+      "increase"
         ? quantity
         : -quantity;
 
@@ -277,11 +536,12 @@ export async function POST(
       currentQuantity +
       quantityChange;
 
+    /* =====================================================
+       DETERMINE NEW STATUS
+    ===================================================== */
+
     let newStatus:
-      | "ACTIVE"
-      | "DEPLETED"
-      | "EXPIRED"
-      | "BLOCKED" =
+      BatchStatus =
       batch.status;
 
     if (
@@ -290,8 +550,20 @@ export async function POST(
       newStatus =
         "DEPLETED";
     } else if (
-      type === "increase"
+      adjustmentType ===
+        "increase" &&
+      (
+        batch.status ===
+          "ACTIVE" ||
+        batch.status ===
+          "DEPLETED"
+      )
     ) {
+      /*
+       * A previously depleted valid batch
+       * becomes ACTIVE after stock is added.
+       */
+
       newStatus =
         "ACTIVE";
     }
@@ -306,9 +578,11 @@ export async function POST(
 
         SET
           current_quantity_base = ?,
+
           status = ?
 
-        WHERE id = ?
+        WHERE
+          id = ?
       `,
       [
         newQuantity,
@@ -320,7 +594,7 @@ export async function POST(
     );
 
     /* =====================================================
-       AUDIT MOVEMENT
+       AUDIT REFERENCE
     ===================================================== */
 
     const referenceNo =
@@ -331,18 +605,32 @@ export async function POST(
         )
         .toUpperCase()}`;
 
+    /* =====================================================
+       STOCK MOVEMENT AUDIT
+
+       performed_by now records the ACTUAL
+       authenticated administrator.
+    ===================================================== */
+
     await connection.execute(
       `
         INSERT INTO stock_movements
         (
           medicine_id,
+
           batch_id,
+
           movement_type,
+
           quantity_change_base,
+
           reference_no,
+
           reason,
+
           performed_by
         )
+
         VALUES
         (?, ?, ?, ?, ?, ?, ?)
       `,
@@ -351,7 +639,8 @@ export async function POST(
 
         batchId,
 
-        type === "increase"
+        adjustmentType ===
+        "increase"
           ? "ADJUSTMENT_IN"
           : "ADJUSTMENT_OUT",
 
@@ -361,47 +650,120 @@ export async function POST(
 
         reason,
 
-        userId,
+        currentAdmin.userId,
       ],
     );
 
+    /* =====================================================
+       COMMIT
+    ===================================================== */
+
     await connection.commit();
 
-    return NextResponse.json({
-      success: true,
+    transactionStarted =
+      false;
 
-      message:
-        "Stock adjusted successfully.",
+    return NextResponse.json(
+      {
+        success: true,
 
-      data: {
-        newQuantity,
+        message:
+          "Stock adjusted successfully.",
+
+        data: {
+          batchId,
+
+          batchNo:
+            batch.batch_no,
+
+          previousQuantity:
+            currentQuantity,
+
+          quantityChange,
+
+          newQuantity,
+
+          newStatus,
+
+          referenceNo,
+
+          performedBy: {
+            userId:
+              currentAdmin.userId,
+
+            fullName:
+              currentAdmin.fullName,
+          },
+        },
       },
-    });
+      {
+        status: 200,
+      },
+    );
   } catch (error) {
-    await connection.rollback();
+    /* =====================================================
+       ROLLBACK ONLY IF TRANSACTION STARTED
+    ===================================================== */
+
+    if (
+      transactionStarted
+    ) {
+      try {
+        await connection.rollback();
+      } catch (
+        rollbackError
+      ) {
+        console.error(
+          "Stock adjustment rollback error:",
+          rollbackError,
+        );
+      }
+    }
 
     console.error(
       "Stock adjustment error:",
       error,
     );
 
+    /* =====================================================
+       AUTHORIZATION ERRORS
+    ===================================================== */
+
+    const authResponse =
+      getAuthErrorResponse(
+        error,
+      );
+
+    if (authResponse) {
+      return authResponse;
+    }
+
+    /* =====================================================
+       INVALID DATABASE STOCK
+    ===================================================== */
+
     if (
-      error instanceof Error &&
+      error instanceof
+        Error &&
       error.message ===
-        "CURRENT_USER_NOT_FOUND"
+        "INVALID_BATCH_QUANTITY"
     ) {
       return NextResponse.json(
         {
           success: false,
 
           message:
-            "Current development user was not found.",
+            "The batch contains an invalid stock quantity.",
         },
         {
           status: 500,
         },
       );
     }
+
+    /* =====================================================
+       SERVER ERROR
+    ===================================================== */
 
     return NextResponse.json(
       {
