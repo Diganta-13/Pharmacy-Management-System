@@ -46,9 +46,21 @@ type MenuItem = {
   badge?: number;
 
   dynamicLowStockBadge?: boolean;
+
+  dynamicExpiryBadge?: boolean;
 };
 
 type LowStockApiResponse = {
+  success: boolean;
+
+  data?: {
+    summary?: {
+      totalAffected?: number;
+    };
+  };
+};
+
+type ExpiryApiResponse = {
   success: boolean;
 
   data?: {
@@ -184,14 +196,8 @@ const menuItems:
       icon:
         CircleAlert,
 
-      /*
-       * Expiry module is not
-       * database-integrated yet.
-       *
-       * Keep existing temporary badge.
-       */
-      badge:
-        3,
+      dynamicExpiryBadge:
+        true,
     },
 
     {
@@ -204,12 +210,6 @@ const menuItems:
       icon:
         Package,
 
-      /*
-       * This badge is loaded
-       * dynamically from:
-       *
-       * GET /api/low-stock
-       */
       dynamicLowStockBadge:
         true,
     },
@@ -234,20 +234,20 @@ export default function Sidebar() {
   const pathname =
     usePathname();
 
-  /* =======================================================
-     LOW STOCK BADGE
-  ======================================================= */
-
   const [
     lowStockCount,
     setLowStockCount,
   ] =
-    useState(
-      0,
-    );
+    useState(0);
+
+  const [
+    expiryAlertCount,
+    setExpiryAlertCount,
+  ] =
+    useState(0);
 
   /* =======================================================
-     LOAD LOW STOCK COUNT
+     LOAD DYNAMIC ALERT COUNTS
   ======================================================= */
 
   useEffect(
@@ -255,7 +255,11 @@ export default function Sidebar() {
       let cancelled =
         false;
 
-      async function loadLowStockCount() {
+      async function loadAlertCounts() {
+        /* ===============================================
+           LOW STOCK
+        =============================================== */
+
         try {
           const response =
             await fetch(
@@ -274,35 +278,27 @@ export default function Sidebar() {
             await response.json();
 
           if (
-            cancelled ||
-            !response.ok ||
-            !result.success
+            !cancelled &&
+            response.ok &&
+            result.success
           ) {
-            return;
-          }
+            const count =
+              Number(
+                result.data
+                  ?.summary
+                  ?.totalAffected ??
+                  0,
+              );
 
-          const count =
-            Number(
-              result.data
-                ?.summary
-                ?.totalAffected ??
-                0,
-            );
-
-          if (
-            Number.isFinite(
-              count,
-            )
-          ) {
             setLowStockCount(
-              Math.max(
-                0,
+              Number.isFinite(
                 count,
-              ),
-            );
-          } else {
-            setLowStockCount(
-              0,
+              )
+                ? Math.max(
+                    0,
+                    count,
+                  )
+                : 0,
             );
           }
         } catch (error) {
@@ -311,19 +307,61 @@ export default function Sidebar() {
             error,
           );
         }
+
+        /* ===============================================
+           EXPIRY
+        =============================================== */
+
+        try {
+          const response =
+            await fetch(
+              "/api/expiry-alerts",
+              {
+                method:
+                  "GET",
+
+                cache:
+                  "no-store",
+              },
+            );
+
+          const result:
+            ExpiryApiResponse =
+            await response.json();
+
+          if (
+            !cancelled &&
+            response.ok &&
+            result.success
+          ) {
+            const count =
+              Number(
+                result.data
+                  ?.summary
+                  ?.totalAffected ??
+                  0,
+              );
+
+            setExpiryAlertCount(
+              Number.isFinite(
+                count,
+              )
+                ? Math.max(
+                    0,
+                    count,
+                  )
+                : 0,
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Sidebar expiry count error:",
+            error,
+          );
+        }
       }
 
-      void loadLowStockCount();
-
-      /*
-       * Re-run when route changes.
-       *
-       * Example:
-       *
-       * Purchase -> Receive Stock
-       * -> navigate elsewhere
-       * -> sidebar count reloads.
-       */
+      void loadAlertCounts();
 
       return () => {
         cancelled =
@@ -342,9 +380,7 @@ export default function Sidebar() {
   return (
     <aside className="hidden h-screen w-[240px] shrink-0 flex-col bg-[#173f61] text-white lg:sticky lg:top-0 lg:flex">
 
-      {/* ===================================================
-          LOGO / BRAND
-      =================================================== */}
+      {/* BRAND */}
 
       <div className="flex h-[86px] items-center gap-3 border-b border-white/10 px-5">
 
@@ -368,9 +404,7 @@ export default function Sidebar() {
 
       </div>
 
-      {/* ===================================================
-          NAVIGATION AREA
-      =================================================== */}
+      {/* NAVIGATION */}
 
       <div className="flex min-h-0 flex-1 flex-col">
 
@@ -389,10 +423,6 @@ export default function Sidebar() {
                 const Icon =
                   item.icon;
 
-                /* =========================================
-                   ACTIVE ROUTE
-                ========================================= */
-
                 const isActive =
                   pathname ===
                     item.href ||
@@ -406,17 +436,23 @@ export default function Sidebar() {
                     )
                   );
 
-                /* =========================================
-                   BADGE
-                ========================================= */
+                let badgeValue =
+                  item.badge ??
+                  0;
 
-                const badgeValue =
+                if (
                   item.dynamicLowStockBadge
+                ) {
+                  badgeValue =
+                    lowStockCount;
+                }
 
-                    ? lowStockCount
-
-                    : item.badge ??
-                      0;
+                if (
+                  item.dynamicExpiryBadge
+                ) {
+                  badgeValue =
+                    expiryAlertCount;
+                }
 
                 return (
                   <Link
@@ -433,21 +469,13 @@ export default function Sidebar() {
                     }`}
                   >
 
-                    {/* ICON */}
-
                     <Icon className="h-[17px] w-[17px] shrink-0" />
 
-                    {/* LABEL */}
-
                     <span className="flex-1 truncate">
-
                       {
                         item.label
                       }
-
                     </span>
-
-                    {/* BADGE */}
 
                     {badgeValue >
                     0 ? (
@@ -473,21 +501,15 @@ export default function Sidebar() {
 
       </div>
 
-      {/* ===================================================
-          USER SECTION
-      =================================================== */}
+      {/* USER */}
 
       <div className="border-t border-white/10">
 
         <div className="flex items-center gap-3 px-5 py-4">
 
-          {/* AVATAR */}
-
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0797d5] text-sm font-semibold">
             A
           </div>
-
-          {/* USER */}
 
           <div className="min-w-0">
 
@@ -502,10 +524,6 @@ export default function Sidebar() {
           </div>
 
         </div>
-
-        {/* =================================================
-            SIGN OUT
-        ================================================= */}
 
         <Link
           href="/login"

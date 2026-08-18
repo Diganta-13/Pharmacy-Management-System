@@ -1,17 +1,29 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
+
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import type {
+  ReactNode,
+} from "react";
+
 import {
   AlertTriangle,
-  Box,
-  CircleDollarSign,
+  Boxes,
   Clock3,
-  Package,
+  Loader2,
   Pill,
+  RefreshCw,
   TrendingUp,
-  UserRoundCog,
+  UserCog,
   Users,
+  WalletCards,
 } from "lucide-react";
+
 import {
   Bar,
   BarChart,
@@ -25,727 +37,2247 @@ import {
   YAxis,
 } from "recharts";
 
-type StatCard = {
-  title: string;
-  value: string;
-  description: string;
-  icon: LucideIcon;
-  borderClass: string;
-  iconClass: string;
+/* =========================================================
+   TYPES
+========================================================= */
+
+type PaymentStatus =
+  | "PAID"
+  | "PARTIAL"
+  | "DUE";
+
+type LowStockStatus =
+  | "LOW_STOCK"
+  | "OUT_OF_STOCK";
+
+/* =========================================================
+   API RESPONSE TYPES
+========================================================= */
+
+type DashboardSummary = {
+  currencyCode: string;
+
+  totalMedicines: number;
+
+  medicinesAddedThisMonth: number;
+
+  todaySales: number;
+
+  todayOrders: number;
+
+  todayChangePercent:
+    | number
+    | null;
+
+  monthlySales: number;
+
+  monthlyLabel: string;
+
+  stockedMedicines: number;
+
+  totalCustomers: number;
+
+  totalEmployees: number;
+
+  activeEmployees: number;
+
+  lowStockAlerts: number;
+
+  lowStockCount: number;
+
+  outOfStockCount: number;
+
+  expiryAlerts: number;
+
+  expiredBatches: number;
+
+  expiringNext30: number;
 };
 
-const statCards: StatCard[] = [
-  {
-    title: "Total Medicines",
-    value: "15",
-    description: "+3 this month",
-    icon: Pill,
-    borderClass: "border-sky-200",
-    iconClass: "bg-sky-50 text-sky-600",
-  },
-  {
-    title: "Today's Sales",
-    value: "৳6,075",
-    description: "+12.5% from yesterday",
-    icon: CircleDollarSign,
-    borderClass: "border-emerald-200",
-    iconClass: "bg-emerald-50 text-emerald-600",
-  },
-  {
-    title: "Low Stock Alerts",
-    value: "3",
-    description: "1 out of stock",
-    icon: AlertTriangle,
-    borderClass: "border-amber-200",
-    iconClass: "bg-amber-50 text-amber-500",
-  },
-  {
-    title: "Expiry Alerts",
-    value: "3",
-    description: "Within 90 days",
-    icon: Clock3,
-    borderClass: "border-rose-200",
-    iconClass: "bg-rose-50 text-rose-500",
-  },
-  {
-    title: "Monthly Sales",
-    value: "৳18,380",
-    description: "Jul 2026",
-    icon: TrendingUp,
-    borderClass: "border-violet-200",
-    iconClass: "bg-violet-50 text-violet-600",
-  },
-  {
-    title: "Total Stock Items",
-    value: "2,840",
-    description: "Across all categories",
-    icon: Box,
-    borderClass: "border-sky-200",
-    iconClass: "bg-sky-50 text-sky-600",
-  },
-  {
-    title: "Total Customers",
-    value: "8",
-    description: "Registered",
-    icon: Users,
-    borderClass: "border-teal-200",
-    iconClass: "bg-teal-50 text-teal-600",
-  },
-  {
-    title: "Total Employees",
-    value: "5",
-    description: "4 active",
-    icon: UserRoundCog,
-    borderClass: "border-indigo-200",
-    iconClass: "bg-indigo-50 text-indigo-600",
-  },
-];
+type MonthlySalesItem = {
+  monthNumber: number;
 
-const monthlySales = [
-  { month: "Jan", amount: 180000 },
-  { month: "Feb", amount: 215000 },
-  { month: "Mar", amount: 255000 },
-  { month: "Apr", amount: 300000 },
-  { month: "May", amount: 320000 },
-  { month: "Jun", amount: 385000 },
-  { month: "Jul", amount: 425000 },
-];
+  month: string;
 
-const medicineTypes = [
-  {
-    name: "Gastric / Antacid",
-    value: 32,
-    revenue: "৳1,71,200",
-    color: "#0789c8",
-  },
-  {
-    name: "Pain Relief",
-    value: 26,
-    revenue: "৳46,250",
-    color: "#129b8d",
-  },
-  {
-    name: "Antibiotic",
-    value: 18,
-    revenue: "৳1,71,600",
-    color: "#7c4df2",
-  },
-  {
-    name: "Allergy",
-    value: 14,
-    revenue: "৳71,800",
-    color: "#f59e0b",
-  },
-  {
-    name: "Vitamin & Supplement",
-    value: 10,
-    revenue: "৳43,200",
-    color: "#13b77a",
-  },
-];
+  revenue: number;
+};
 
-const recentSales = [
-  {
-    invoice: "INV-2026-001",
-    customer: "Rahim Uddin",
-    date: "06-07-2026",
-    items: 3,
-    amount: "৳1,845",
-    method: "Cash",
-    status: "paid",
-  },
-  {
-    invoice: "INV-2026-002",
-    customer: "Nasrin Begum",
-    date: "06-07-2026",
-    items: 5,
-    amount: "৳4,230",
-    method: "bKash",
-    status: "paid",
-  },
-  {
-    invoice: "INV-2026-003",
-    customer: "Kamal Hossain",
-    date: "05-07-2026",
-    items: 2,
-    amount: "৳960",
-    method: "Cash",
-    status: "pending",
-  },
-  {
-    invoice: "INV-2026-004",
-    customer: "Farzana Akter",
-    date: "05-07-2026",
-    items: 4,
-    amount: "৳2,480",
-    method: "Nagad",
-    status: "paid",
-  },
-  {
-    invoice: "INV-2026-005",
-    customer: "Mehedi Hasan",
-    date: "04-07-2026",
-    items: 7,
-    amount: "৳6,825",
-    method: "Card",
-    status: "paid",
-  },
-  {
-    invoice: "INV-2026-006",
-    customer: "Tanvir Ahmed",
-    date: "04-07-2026",
-    items: 2,
-    amount: "৳1,200",
-    method: "Rocket",
-    status: "due",
-  },
-  {
-    invoice: "INV-2026-007",
-    customer: "Sadiya Islam",
-    date: "03-07-2026",
-    items: 3,
-    amount: "৳840",
-    method: "Cash",
-    status: "paid",
-  },
-];
+type RecentSale = {
+  id: number;
 
-const lowStockItems = [
-  {
-    name: "Seclo 20mg",
-    stock: "35 boxes",
-    minimum: "min 80",
-    status: "Low",
-  },
-  {
-    name: "Sergel 20mg",
-    stock: "12 boxes",
-    minimum: "min 50",
-    status: "Low",
-  },
-  {
-    name: "Histacin",
-    stock: "8 strips",
-    minimum: "min 60",
-    status: "Low",
-  },
-  {
-    name: "DP 10mg",
-    stock: "0 strips",
-    minimum: "min 30",
-    status: "Out",
-  },
-];
+  invoice: string;
 
-const topMedicines = [
-  {
-    rank: 1,
-    name: "Napa 500mg",
-    sold: "1,240 strips",
-    revenue: "৳14,880",
-    percent: 100,
-    category: "Pain Relief",
-  },
-  {
-    rank: 2,
-    name: "Seclo 20mg",
-    sold: "980 boxes",
-    revenue: "৳78,400",
-    percent: 79,
-    category: "Gastric / Antacid",
-  },
-  {
-    rank: 3,
-    name: "Maxpro 20mg",
-    sold: "870 boxes",
-    revenue: "৳78,300",
-    percent: 70,
-    category: "Gastric / Antacid",
-  },
-  {
-    rank: 4,
-    name: "Histacin",
-    sold: "740 strips",
-    revenue: "৳5,920",
-    percent: 60,
-    category: "Allergy",
-  },
-  {
-    rank: 5,
-    name: "Monas 10mg",
-    sold: "620 strips",
-    revenue: "৳93,000",
-    percent: 50,
-    category: "Allergy",
-  },
-];
+  customer: string;
 
-function StatCardItem({ card }: { card: StatCard }) {
-  const Icon = card.icon;
+  date: string;
 
-  return (
-    <article
-      className={`flex min-h-[100px] items-start justify-between rounded-2xl border bg-white p-4 shadow-sm ${card.borderClass}`}
-    >
-      <div>
-        <p className="text-[11px] text-slate-500">{card.title}</p>
-        <h3 className="mt-1 text-[22px] font-semibold leading-tight text-slate-950">
-          {card.value}
-        </h3>
-        <p className="mt-1 text-[10px] text-slate-500">
-          {card.description}
-        </p>
-      </div>
+  items: number;
 
-      <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${card.iconClass}`}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
-    </article>
+  amount: number;
+
+  method: string;
+
+  paymentStatus:
+    PaymentStatus;
+};
+
+type LowStockItem = {
+  medicineId: number;
+
+  medicineCode: string;
+
+  medicineName: string;
+
+  stock: number;
+
+  reorderLevel: number;
+
+  baseUnit: string;
+
+  status:
+    LowStockStatus;
+};
+
+type TopMedicine = {
+  rank: number;
+
+  medicineId: number;
+
+  medicineCode: string;
+
+  medicineName: string;
+
+  category: string;
+
+  soldQuantity: number;
+
+  baseUnit: string;
+
+  revenue: number;
+
+  percent: number;
+};
+
+type TopCategory = {
+  categoryId: number;
+
+  category: string;
+
+  soldQuantity: number;
+
+  revenue: number;
+
+  percent: number;
+};
+
+type DashboardData = {
+  summary:
+    DashboardSummary;
+
+  chart: {
+    year: number;
+
+    changePercent:
+      | number
+      | null;
+
+    months:
+      MonthlySalesItem[];
+  };
+
+  recentSales:
+    RecentSale[];
+
+  lowStockItems:
+    LowStockItem[];
+
+  topMedicines:
+    TopMedicine[];
+
+  topCategories:
+    TopCategory[];
+};
+
+type DashboardApiResponse = {
+  success: boolean;
+
+  message?: string;
+
+  data?: DashboardData;
+};
+
+/* =========================================================
+   FETCH
+========================================================= */
+
+async function fetchDashboard(
+  signal?: AbortSignal,
+): Promise<DashboardData> {
+  const response =
+    await fetch(
+      "/api/dashboard",
+      {
+        cache: "no-store",
+        signal,
+      },
+    );
+
+  const result =
+    (await response.json()) as
+      DashboardApiResponse;
+
+  if (
+    !response.ok ||
+    !result.success ||
+    !result.data
+  ) {
+    throw new Error(
+      result.message ??
+        "Failed to load dashboard.",
+    );
+  }
+
+  return result.data;
+}
+
+/* =========================================================
+   FORMAT HELPERS
+========================================================= */
+
+function safeNumber(
+  value: unknown,
+) {
+  const number =
+    Number(value);
+
+  return Number.isFinite(
+    number,
+  )
+    ? number
+    : 0;
+}
+
+function formatNumber(
+  value: number,
+) {
+  return new Intl.NumberFormat(
+    "en-BD",
+    {
+      maximumFractionDigits:
+        2,
+    },
+  ).format(
+    safeNumber(value),
   );
 }
 
-function SectionHeader({
-  title,
-  subtitle,
-  action,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between border-b border-slate-200 px-4 py-3">
-      <div>
-        <h3 className="text-[13px] font-semibold text-slate-950">{title}</h3>
+function formatQuantity(
+  value: number,
+) {
+  return new Intl.NumberFormat(
+    "en-BD",
+    {
+      maximumFractionDigits:
+        3,
+    },
+  ).format(
+    safeNumber(value),
+  );
+}
 
-        {subtitle ? (
-          <p className="mt-0.5 text-[10px] text-slate-500">{subtitle}</p>
-        ) : null}
-      </div>
+function getCurrencySymbol(
+  currencyCode: string,
+) {
+  if (
+    currencyCode === "BDT"
+  ) {
+    return "৳";
+  }
 
-      {action ? (
-        <button
-          type="button"
-          className="text-[10px] font-medium text-sky-600 hover:text-sky-700"
+  return `${currencyCode} `;
+}
+
+function formatMoney(
+  value: number,
+  currencyCode = "BDT",
+) {
+  return `${getCurrencySymbol(
+    currencyCode,
+  )}${formatNumber(value)}`;
+}
+
+function formatDate(
+  value: string,
+) {
+  if (!value) {
+    return "-";
+  }
+
+  const parts =
+    value.split("-");
+
+  if (
+    parts.length !== 3
+  ) {
+    return value;
+  }
+
+  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+}
+
+function formatPercent(
+  value:
+    | number
+    | null,
+) {
+  if (
+    value === null
+  ) {
+    return "—";
+  }
+
+  if (
+    value > 0
+  ) {
+    return `+${formatNumber(
+      value,
+    )}%`;
+  }
+
+  return `${formatNumber(
+    value,
+  )}%`;
+}
+
+function formatAxisMoney(
+  value: number,
+) {
+  const amount =
+    safeNumber(value);
+
+  if (
+    amount >=
+    1_000_000
+  ) {
+    return `৳${formatNumber(
+      amount /
+        1_000_000,
+    )}m`;
+  }
+
+  if (
+    amount >=
+    1000
+  ) {
+    return `৳${formatNumber(
+      amount /
+        1000,
+    )}k`;
+  }
+
+  return `৳${formatNumber(
+    amount,
+  )}`;
+}
+
+/* =========================================================
+   COLORS
+========================================================= */
+
+const categoryColors = [
+  "#078bcb",
+  "#159c92",
+  "#7347f2",
+  "#f59e0b",
+  "#10b981",
+];
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+export default function DashboardPage() {
+  const [
+    data,
+    setData,
+  ] =
+    useState<DashboardData | null>(
+      null,
+    );
+
+  const [
+    isLoading,
+    setIsLoading,
+  ] =
+    useState(true);
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] =
+    useState("");
+
+  /* =======================================================
+     INITIAL LOAD
+  ======================================================= */
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    fetchDashboard(
+      controller.signal,
+    )
+      .then(
+        (
+          dashboardData,
+        ) => {
+          if (
+            controller.signal
+              .aborted
+          ) {
+            return;
+          }
+
+          setData(
+            dashboardData,
+          );
+
+          setErrorMessage(
+            "",
+          );
+
+          setIsLoading(
+            false,
+          );
+        },
+      )
+      .catch(
+        (error) => {
+          if (
+            controller.signal
+              .aborted
+          ) {
+            return;
+          }
+
+          console.error(
+            "Dashboard load error:",
+            error,
+          );
+
+          setErrorMessage(
+            error instanceof Error
+              ? error.message
+              : "Failed to load dashboard.",
+          );
+
+          setIsLoading(
+            false,
+          );
+        },
+      );
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
+
+  /* =======================================================
+     REFRESH
+  ======================================================= */
+
+  async function refreshDashboard() {
+    try {
+      setIsLoading(
+        true,
+      );
+
+      setErrorMessage(
+        "",
+      );
+
+      const dashboardData =
+        await fetchDashboard();
+
+      setData(
+        dashboardData,
+      );
+    } catch (error) {
+      console.error(
+        "Dashboard refresh error:",
+        error,
+      );
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to load dashboard.",
+      );
+    } finally {
+      setIsLoading(
+        false,
+      );
+    }
+  }
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
+
+  if (
+    isLoading &&
+    !data
+  ) {
+    return (
+      <div
+        className="
+          flex
+          min-h-[500px]
+          items-center
+          justify-center
+        "
+      >
+        <div
+          className="
+            flex
+            items-center
+            gap-3
+            text-slate-500
+          "
         >
-          {action}
-        </button>
-      ) : null}
+          <Loader2
+            size={22}
+            className="
+              animate-spin
+            "
+          />
+
+          Loading dashboard...
+        </div>
+      </div>
+    );
+  }
+
+  /* =======================================================
+     ERROR
+  ======================================================= */
+
+  if (!data) {
+    return (
+      <div
+        className="
+          flex
+          min-h-[500px]
+          items-center
+          justify-center
+          p-5
+        "
+      >
+        <div
+          className="
+            max-w-md
+            rounded-2xl
+            border
+            border-red-200
+            bg-red-50
+            p-6
+            text-center
+          "
+        >
+          <AlertTriangle
+            className="
+              mx-auto
+              mb-3
+              text-red-500
+            "
+            size={32}
+          />
+
+          <p
+            className="
+              font-semibold
+              text-red-700
+            "
+          >
+            Could not load dashboard
+          </p>
+
+          <p
+            className="
+              mt-2
+              text-sm
+              text-red-600
+            "
+          >
+            {errorMessage}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              void refreshDashboard();
+            }}
+            className="
+              mt-4
+              inline-flex
+              items-center
+              gap-2
+              rounded-xl
+              bg-red-600
+              px-4
+              py-2
+              text-sm
+              font-medium
+              text-white
+              hover:bg-red-700
+            "
+          >
+            <RefreshCw
+              size={15}
+            />
+
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const {
+    summary,
+    chart,
+    recentSales,
+    lowStockItems,
+    topMedicines,
+    topCategories,
+  } = data;
+
+  const currencyCode =
+    summary.currencyCode ??
+    "BDT";
+
+  return (
+    <div
+      className="
+        min-h-full
+        bg-[#f5f8fa]
+        p-4
+        md:p-5
+      "
+    >
+      <div className="space-y-4">
+        {/* =================================================
+            SUMMARY CARDS
+        ================================================= */}
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            gap-3
+            sm:grid-cols-2
+            xl:grid-cols-4
+          "
+        >
+          <DashboardCard
+            href="/admin/medicines"
+            title="Total Medicines"
+            value={formatNumber(
+              summary.totalMedicines,
+            )}
+            subtitle="Active medicines"
+            borderClass="border-sky-200"
+            iconClass="bg-sky-50 text-sky-600"
+            icon={
+              <Pill
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/sales"
+            title="Today's Sales"
+            value={formatMoney(
+              summary.todaySales,
+              currencyCode,
+            )}
+            subtitle={
+              summary.todayChangePercent ===
+              null
+                ? `${formatNumber(
+                    summary.todayOrders,
+                  )} order${
+                    summary.todayOrders ===
+                    1
+                      ? ""
+                      : "s"
+                  } today`
+                : `${formatPercent(
+                    summary.todayChangePercent,
+                  )} from yesterday`
+            }
+            borderClass="border-emerald-200"
+            iconClass="bg-emerald-50 text-emerald-600"
+            icon={
+              <WalletCards
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/low-stock-alerts"
+            title="Low Stock Alerts"
+            value={formatNumber(
+              summary.lowStockAlerts,
+            )}
+            subtitle={`${formatNumber(
+              summary.outOfStockCount,
+            )} out of stock`}
+            borderClass="border-amber-200"
+            iconClass="bg-amber-50 text-amber-600"
+            icon={
+              <AlertTriangle
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/expiry-alerts"
+            title="Expiry Alerts"
+            value={formatNumber(
+              summary.expiryAlerts,
+            )}
+            subtitle="Expired + within 30 days"
+            borderClass="border-rose-200"
+            iconClass="bg-rose-50 text-rose-500"
+            icon={
+              <Clock3
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/reports"
+            title="Monthly Sales"
+            value={formatMoney(
+              summary.monthlySales,
+              currencyCode,
+            )}
+            subtitle={
+              summary.monthlyLabel
+            }
+            borderClass="border-violet-200"
+            iconClass="bg-violet-50 text-violet-600"
+            icon={
+              <TrendingUp
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/stock"
+            title="Stocked Medicines"
+            value={formatNumber(
+              summary.stockedMedicines,
+            )}
+            subtitle="Medicines with stock records"
+            borderClass="border-sky-200"
+            iconClass="bg-sky-50 text-sky-600"
+            icon={
+              <Boxes
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/customers"
+            title="Total Customers"
+            value={formatNumber(
+              summary.totalCustomers,
+            )}
+            subtitle="Registered customers"
+            borderClass="border-teal-200"
+            iconClass="bg-teal-50 text-teal-600"
+            icon={
+              <Users
+                size={21}
+              />
+            }
+          />
+
+          <DashboardCard
+            href="/admin/employees"
+            title="Total Employees"
+            value={formatNumber(
+              summary.totalEmployees,
+            )}
+            subtitle={`${formatNumber(
+              summary.activeEmployees,
+            )} active`}
+            borderClass="border-indigo-200"
+            iconClass="bg-indigo-50 text-indigo-600"
+            icon={
+              <UserCog
+                size={21}
+              />
+            }
+          />
+        </div>
+
+        {/* =================================================
+            SALES CHART + DONUT
+        ================================================= */}
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            gap-4
+            xl:grid-cols-12
+          "
+        >
+          <section
+            className="
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white
+              p-4
+              shadow-sm
+              xl:col-span-8
+            "
+          >
+            <div
+              className="
+                flex
+                items-start
+                justify-between
+                gap-4
+              "
+            >
+              <div>
+                <h2
+                  className="
+                    text-sm
+                    font-semibold
+                    text-slate-950
+                  "
+                >
+                  Monthly Sales Chart
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-xs
+                    text-slate-500
+                  "
+                >
+                  Jan -{" "}
+                  {chart.months[
+                    chart.months.length -
+                      1
+                  ]?.month ??
+                    "Current"}{" "}
+                  {chart.year} ·
+                  Bangladeshi Taka (৳)
+                </p>
+              </div>
+
+              <span
+                className={`
+                  rounded-full
+                  border
+                  px-3
+                  py-1
+                  text-xs
+                  font-medium
+                  ${
+                    chart.changePercent ===
+                    null
+                      ? "border-slate-200 bg-slate-50 text-slate-500"
+                      : chart.changePercent >=
+                          0
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                        : "border-red-200 bg-red-50 text-red-500"
+                  }
+                `}
+              >
+                {chart.changePercent ===
+                null
+                  ? "No prior data"
+                  : formatPercent(
+                      chart.changePercent,
+                    )}
+              </span>
+            </div>
+
+            <div
+              className="
+                mt-3
+                h-[330px]
+                w-full
+              "
+            >
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
+                <BarChart
+                  data={
+                    chart.months
+                  }
+                  margin={{
+                    top: 15,
+                    right: 15,
+                    left: 10,
+                    bottom: 0,
+                  }}
+                >
+                  <CartesianGrid
+                    stroke="#e9eef3"
+                    strokeDasharray="3 3"
+                    vertical={
+                      false
+                    }
+                  />
+
+                  <XAxis
+                    dataKey="month"
+                    axisLine={
+                      false
+                    }
+                    tickLine={
+                      false
+                    }
+                    tick={{
+                      fill: "#94a3b8",
+                      fontSize: 12,
+                    }}
+                    dy={8}
+                  />
+
+                  <YAxis
+                    axisLine={
+                      false
+                    }
+                    tickLine={
+                      false
+                    }
+                    width={65}
+                    tick={{
+                      fill: "#94a3b8",
+                      fontSize: 12,
+                    }}
+                    tickFormatter={(
+                      value,
+                    ) =>
+                      formatAxisMoney(
+                        Number(
+                          value,
+                        ),
+                      )
+                    }
+                  />
+
+                  <Tooltip
+                    cursor={{
+                      fill: "#eef2f7",
+                    }}
+                    contentStyle={{
+                      borderRadius:
+                        "12px",
+                      border:
+                        "1px solid #e2e8f0",
+                      boxShadow:
+                        "0 8px 24px rgba(15,23,42,.10)",
+                    }}
+                    labelStyle={{
+                      fontWeight: 600,
+                      color: "#0f172a",
+                    }}
+                    formatter={(
+                      value,
+                    ) => [
+                      formatMoney(
+                        Number(
+                          value ?? 0,
+                        ),
+                        currencyCode,
+                      ),
+                      "Revenue",
+                    ]}
+                  />
+
+                  <Bar
+                    dataKey="revenue"
+                    fill="#0d8dcc"
+                    radius={[
+                      7,
+                      7,
+                      0,
+                      0,
+                    ]}
+                    maxBarSize={38}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+
+          {/* =================================================
+              DONUT
+          ================================================= */}
+
+          <section
+            className="
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white
+              p-4
+              shadow-sm
+              xl:col-span-4
+            "
+          >
+            <h2
+              className="
+                text-sm
+                font-semibold
+                text-slate-950
+              "
+            >
+              Most Sold Medicine Type
+            </h2>
+
+            <p
+              className="
+                mt-1
+                text-xs
+                text-slate-500
+              "
+            >
+              By revenue · Admin view
+            </p>
+
+            {topCategories.length ===
+            0 ? (
+              <div
+                className="
+                  flex
+                  h-[360px]
+                  items-center
+                  justify-center
+                  text-sm
+                  text-slate-400
+                "
+              >
+                No sales data available.
+              </div>
+            ) : (
+              <>
+                <div className="h-[210px]">
+                  <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                  >
+                    <PieChart>
+                      <Pie
+                        data={
+                          topCategories
+                        }
+                        dataKey="revenue"
+                        nameKey="category"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={48}
+                        outerRadius={78}
+                        paddingAngle={2}
+                        stroke="#ffffff"
+                        strokeWidth={3}
+                      >
+                        {topCategories.map(
+                          (
+                            category,
+                            index,
+                          ) => (
+                            <Cell
+                              key={
+                                category.categoryId
+                              }
+                              fill={
+                                categoryColors[
+                                  index %
+                                    categoryColors.length
+                                ]
+                              }
+                            />
+                          ),
+                        )}
+                      </Pie>
+
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius:
+                            "12px",
+                          border:
+                            "1px solid #e2e8f0",
+                        }}
+                        formatter={(
+                          value,
+                        ) => [
+                          formatMoney(
+                            Number(
+                              value ?? 0,
+                            ),
+                            currencyCode,
+                          ),
+                          "Revenue",
+                        ]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="space-y-2.5">
+                  {topCategories.map(
+                    (
+                      category,
+                      index,
+                    ) => (
+                      <div
+                        key={
+                          category.categoryId
+                        }
+                        className="
+                          grid
+                          grid-cols-[1fr_auto_auto]
+                          items-center
+                          gap-3
+                          text-xs
+                        "
+                      >
+                        <div
+                          className="
+                            flex
+                            min-w-0
+                            items-center
+                            gap-2
+                            text-slate-600
+                          "
+                        >
+                          <span
+                            className="
+                              h-2.5
+                              w-2.5
+                              shrink-0
+                              rounded-full
+                            "
+                            style={{
+                              backgroundColor:
+                                categoryColors[
+                                  index %
+                                    categoryColors.length
+                                ],
+                            }}
+                          />
+
+                          <span className="truncate">
+                            {
+                              category.category
+                            }
+                          </span>
+                        </div>
+
+                        <span
+                          className="
+                            font-semibold
+                            text-slate-900
+                          "
+                        >
+                          {formatNumber(
+                            category.percent,
+                          )}
+                          %
+                        </span>
+
+                        <span
+                          className="
+                            min-w-[80px]
+                            text-right
+                            font-medium
+                            text-emerald-600
+                          "
+                        >
+                          {formatMoney(
+                            category.revenue,
+                            currencyCode,
+                          )}
+                        </span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+
+        {/* =================================================
+            RECENT SALES + LOW STOCK
+        ================================================= */}
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            gap-4
+            xl:grid-cols-12
+          "
+        >
+          <section
+            className="
+              overflow-hidden
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white
+              shadow-sm
+              xl:col-span-8
+            "
+          >
+            <div
+              className="
+                flex
+                items-center
+                justify-between
+                border-b
+                border-slate-200
+                px-4
+                py-4
+              "
+            >
+              <div>
+                <h2
+                  className="
+                    text-sm
+                    font-semibold
+                    text-slate-950
+                  "
+                >
+                  Recent Sales
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-xs
+                    text-slate-500
+                  "
+                >
+                  Invoice, amount & payment method
+                </p>
+              </div>
+
+              <Link
+                href="/admin/sales"
+                className="
+                  text-xs
+                  font-medium
+                  text-sky-600
+                  hover:text-sky-700
+                "
+              >
+                View all
+              </Link>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table
+                className="
+                  w-full
+                  min-w-[820px]
+                "
+              >
+                <thead>
+                  <tr
+                    className="
+                      bg-slate-50
+                      text-left
+                      text-xs
+                      text-slate-500
+                    "
+                  >
+                    <th className="px-4 py-3 font-medium">
+                      Invoice
+                    </th>
+
+                    <th className="px-4 py-3 font-medium">
+                      Customer
+                    </th>
+
+                    <th className="px-4 py-3 font-medium">
+                      Date
+                    </th>
+
+                    <th className="px-4 py-3 font-medium">
+                      Items
+                    </th>
+
+                    <th className="px-4 py-3 font-medium">
+                      Amount (৳)
+                    </th>
+
+                    <th className="px-4 py-3 font-medium">
+                      Method
+                    </th>
+
+                    <th className="px-4 py-3 font-medium">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {recentSales.length ===
+                  0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="
+                          px-4
+                          py-10
+                          text-center
+                          text-sm
+                          text-slate-400
+                        "
+                      >
+                        No completed sales found.
+                      </td>
+                    </tr>
+                  ) : (
+                    recentSales.map(
+                      (sale) => (
+                        <tr
+                          key={
+                            sale.id
+                          }
+                          className="
+                            border-t
+                            border-slate-100
+                            text-sm
+                          "
+                        >
+                          <td
+                            className="
+                              px-4
+                              py-3
+                              font-medium
+                              text-sky-600
+                            "
+                          >
+                            {
+                              sale.invoice
+                            }
+                          </td>
+
+                          <td
+                            className="
+                              px-4
+                              py-3
+                              font-medium
+                              text-slate-900
+                            "
+                          >
+                            {
+                              sale.customer
+                            }
+                          </td>
+
+                          <td
+                            className="
+                              px-4
+                              py-3
+                              text-slate-500
+                            "
+                          >
+                            {formatDate(
+                              sale.date,
+                            )}
+                          </td>
+
+                          <td
+                            className="
+                              px-4
+                              py-3
+                              text-slate-700
+                            "
+                          >
+                            {formatNumber(
+                              sale.items,
+                            )}
+                          </td>
+
+                          <td
+                            className="
+                              px-4
+                              py-3
+                              font-semibold
+                              text-emerald-600
+                            "
+                          >
+                            {formatMoney(
+                              sale.amount,
+                              currencyCode,
+                            )}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <span
+                              className="
+                                rounded-full
+                                border
+                                border-sky-100
+                                bg-sky-50
+                                px-2.5
+                                py-1
+                                text-xs
+                                font-medium
+                                text-sky-700
+                              "
+                            >
+                              {
+                                sale.method
+                              }
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <PaymentBadge
+                              status={
+                                sale.paymentStatus
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ),
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* =================================================
+              LOW STOCK PANEL
+          ================================================= */}
+
+          <section
+            className="
+              overflow-hidden
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white
+              shadow-sm
+              xl:col-span-4
+            "
+          >
+            <div
+              className="
+                flex
+                items-center
+                justify-between
+                border-b
+                border-slate-200
+                px-4
+                py-4
+              "
+            >
+              <h2
+                className="
+                  text-sm
+                  font-semibold
+                  text-slate-950
+                "
+              >
+                Low Stock Alerts
+              </h2>
+
+              <Link
+                href="/admin/low-stock-alerts"
+                className="
+                  text-xs
+                  font-medium
+                  text-sky-600
+                  hover:text-sky-700
+                "
+              >
+                Manage
+              </Link>
+            </div>
+
+            {lowStockItems.length ===
+            0 ? (
+              <div
+                className="
+                  flex
+                  min-h-[260px]
+                  items-center
+                  justify-center
+                  px-4
+                  text-sm
+                  text-slate-400
+                "
+              >
+                No low stock alerts.
+              </div>
+            ) : (
+              <div>
+                {lowStockItems.map(
+                  (item) => (
+                    <div
+                      key={
+                        item.medicineId
+                      }
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        gap-3
+                        border-b
+                        border-slate-100
+                        px-4
+                        py-4
+                        last:border-b-0
+                      "
+                    >
+                      <div
+                        className="
+                          flex
+                          min-w-0
+                          items-start
+                          gap-3
+                        "
+                      >
+                        <span
+                          className={`
+                            mt-1.5
+                            h-2.5
+                            w-2.5
+                            shrink-0
+                            rounded-full
+                            ${
+                              item.status ===
+                              "OUT_OF_STOCK"
+                                ? "bg-rose-500"
+                                : "bg-amber-500"
+                            }
+                          `}
+                        />
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              truncate
+                              text-sm
+                              font-medium
+                              text-slate-900
+                            "
+                          >
+                            {
+                              item.medicineName
+                            }
+                          </p>
+
+                          <p
+                            className="
+                              mt-1
+                              text-xs
+                              text-slate-500
+                            "
+                          >
+                            {formatQuantity(
+                              item.stock,
+                            )}{" "}
+                            {
+                              item.baseUnit
+                            }{" "}
+                            · min{" "}
+                            {formatQuantity(
+                              item.reorderLevel,
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <LowStockBadge
+                        status={
+                          item.status
+                        }
+                      />
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* =================================================
+            MOST SOLD MEDICINES + CATEGORIES
+        ================================================= */}
+
+        <div
+          className="
+            grid
+            grid-cols-1
+            gap-4
+            xl:grid-cols-2
+          "
+        >
+          <section
+            className="
+              overflow-hidden
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white
+              shadow-sm
+            "
+          >
+            <div
+              className="
+                flex
+                items-center
+                justify-between
+                border-b
+                border-slate-200
+                px-4
+                py-4
+              "
+            >
+              <div>
+                <h2
+                  className="
+                    text-sm
+                    font-semibold
+                    text-slate-950
+                  "
+                >
+                  Most Sold Medicines
+                </h2>
+
+                <p
+                  className="
+                    mt-1
+                    text-xs
+                    text-slate-500
+                  "
+                >
+                  Top 5 by base quantity sold
+                </p>
+              </div>
+
+              <span
+                className="
+                  text-xs
+                  font-semibold
+                  text-sky-600
+                "
+              >
+                TOP 5
+              </span>
+            </div>
+
+            {topMedicines.length ===
+            0 ? (
+              <div
+                className="
+                  flex
+                  min-h-[300px]
+                  items-center
+                  justify-center
+                  text-sm
+                  text-slate-400
+                "
+              >
+                No medicine sales data.
+              </div>
+            ) : (
+              <div>
+                {topMedicines.map(
+                  (medicine) => (
+                    <div
+                      key={
+                        medicine.medicineId
+                      }
+                      className="
+                        border-b
+                        border-slate-100
+                        px-4
+                        py-4
+                        last:border-b-0
+                      "
+                    >
+                      <div className="flex gap-3">
+                        <div
+                          className={`
+                            flex
+                            h-7
+                            w-7
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            text-xs
+                            font-semibold
+                            ${
+                              medicine.rank ===
+                              1
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-slate-100 text-slate-500"
+                            }
+                          `}
+                        >
+                          {
+                            medicine.rank
+                          }
+                        </div>
+
+                        <div
+                          className="
+                            min-w-0
+                            flex-1
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              flex-wrap
+                              items-start
+                              justify-between
+                              gap-3
+                            "
+                          >
+                            <p
+                              className="
+                                font-semibold
+                                text-slate-900
+                              "
+                            >
+                              {
+                                medicine.medicineName
+                              }
+                            </p>
+
+                            <div className="text-right text-xs">
+                              <span className="text-slate-500">
+                                {formatQuantity(
+                                  medicine.soldQuantity,
+                                )}{" "}
+                                {
+                                  medicine.baseUnit
+                                }
+                              </span>
+
+                              <span
+                                className="
+                                  ml-3
+                                  rounded-full
+                                  bg-emerald-50
+                                  px-2
+                                  py-1
+                                  font-semibold
+                                  text-emerald-700
+                                "
+                              >
+                                {formatMoney(
+                                  medicine.revenue,
+                                  currencyCode,
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className="
+                              mt-3
+                              flex
+                              items-center
+                              gap-3
+                            "
+                          >
+                            <div
+                              className="
+                                h-1.5
+                                flex-1
+                                overflow-hidden
+                                rounded-full
+                                bg-slate-100
+                              "
+                            >
+                              <div
+                                className="
+                                  h-full
+                                  rounded-full
+                                  bg-sky-500
+                                "
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    Math.max(
+                                      0,
+                                      medicine.percent,
+                                    ),
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+
+                            <span
+                              className="
+                                w-10
+                                text-right
+                                text-[11px]
+                                text-slate-500
+                              "
+                            >
+                              {
+                                medicine.percent
+                              }
+                              %
+                            </span>
+
+                            <span
+                              className="
+                                rounded-full
+                                border
+                                border-sky-100
+                                bg-sky-50
+                                px-2
+                                py-1
+                                text-[10px]
+                                text-sky-700
+                              "
+                            >
+                              {
+                                medicine.category
+                              }
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* =================================================
+              CATEGORY LIST
+          ================================================= */}
+
+          <section
+            className="
+              overflow-hidden
+              rounded-2xl
+              border
+              border-slate-200
+              bg-white
+              shadow-sm
+            "
+          >
+            <div
+              className="
+                border-b
+                border-slate-200
+                px-4
+                py-4
+              "
+            >
+              <h2
+                className="
+                  text-sm
+                  font-semibold
+                  text-slate-950
+                "
+              >
+                Most Sold Medicine Category
+              </h2>
+
+              <p
+                className="
+                  mt-1
+                  text-xs
+                  text-slate-500
+                "
+              >
+                By quantity & revenue
+              </p>
+            </div>
+
+            {topCategories.length ===
+            0 ? (
+              <div
+                className="
+                  flex
+                  min-h-[300px]
+                  items-center
+                  justify-center
+                  text-sm
+                  text-slate-400
+                "
+              >
+                No category sales data.
+              </div>
+            ) : (
+              <div className="space-y-6 p-5">
+                {topCategories.map(
+                  (
+                    category,
+                    index,
+                  ) => (
+                    <div
+                      key={
+                        category.categoryId
+                      }
+                    >
+                      <div
+                        className="
+                          flex
+                          items-start
+                          gap-3
+                        "
+                      >
+                        <span
+                          className="
+                            mt-1
+                            h-3
+                            w-3
+                            shrink-0
+                            rounded-full
+                          "
+                          style={{
+                            backgroundColor:
+                              categoryColors[
+                                index %
+                                  categoryColors.length
+                              ],
+                          }}
+                        />
+
+                        <div
+                          className="
+                            min-w-0
+                            flex-1
+                          "
+                        >
+                          <div
+                            className="
+                              flex
+                              flex-wrap
+                              items-center
+                              justify-between
+                              gap-2
+                            "
+                          >
+                            <p
+                              className="
+                                text-sm
+                                font-medium
+                                text-slate-900
+                              "
+                            >
+                              {
+                                category.category
+                              }
+                            </p>
+
+                            <div className="text-xs">
+                              <span className="text-slate-500">
+                                {formatQuantity(
+                                  category.soldQuantity,
+                                )}{" "}
+                                units
+                              </span>
+
+                              <span
+                                className="
+                                  ml-2
+                                  font-semibold
+                                  text-emerald-600
+                                "
+                              >
+                                {formatMoney(
+                                  category.revenue,
+                                  currencyCode,
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div
+                            className="
+                              mt-3
+                              flex
+                              items-center
+                              gap-3
+                            "
+                          >
+                            <div
+                              className="
+                                h-1.5
+                                flex-1
+                                overflow-hidden
+                                rounded-full
+                                bg-slate-100
+                              "
+                            >
+                              <div
+                                className="
+                                  h-full
+                                  rounded-full
+                                "
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    Math.max(
+                                      0,
+                                      category.percent,
+                                    ),
+                                  )}%`,
+
+                                  backgroundColor:
+                                    categoryColors[
+                                      index %
+                                        categoryColors.length
+                                    ],
+                                }}
+                              />
+                            </div>
+
+                            <span
+                              className="
+                                w-11
+                                text-right
+                                text-xs
+                                text-slate-500
+                              "
+                            >
+                              {formatNumber(
+                                category.percent,
+                              )}
+                              %
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const statusClass =
-    status === "paid"
+/* =========================================================
+   DASHBOARD CARD
+========================================================= */
+
+function DashboardCard({
+  href,
+  title,
+  value,
+  subtitle,
+  icon,
+  borderClass,
+  iconClass,
+}: {
+  href: string;
+
+  title: string;
+
+  value: string;
+
+  subtitle: string;
+
+  icon: ReactNode;
+
+  borderClass: string;
+
+  iconClass: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`
+        group
+        block
+        rounded-2xl
+        border
+        bg-white
+        p-4
+        shadow-sm
+        transition
+        duration-200
+        hover:-translate-y-0.5
+        hover:shadow-md
+        focus:outline-none
+        focus:ring-2
+        focus:ring-sky-300
+        ${borderClass}
+      `}
+    >
+      <div
+        className="
+          flex
+          items-start
+          justify-between
+          gap-3
+        "
+      >
+        <div className="min-w-0">
+          <p
+            className="
+              text-xs
+              text-slate-500
+            "
+          >
+            {title}
+          </p>
+
+          <p
+            className="
+              mt-1
+              truncate
+              text-2xl
+              font-bold
+              text-slate-950
+            "
+          >
+            {value}
+          </p>
+
+          <p
+            className="
+              mt-1
+              text-xs
+              text-slate-500
+            "
+          >
+            {subtitle}
+          </p>
+        </div>
+
+        <div
+          className={`
+            flex
+            h-11
+            w-11
+            shrink-0
+            items-center
+            justify-center
+            rounded-full
+            transition
+            group-hover:scale-105
+            ${iconClass}
+          `}
+        >
+          {icon}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* =========================================================
+   PAYMENT BADGE
+========================================================= */
+
+function PaymentBadge({
+  status,
+}: {
+  status: PaymentStatus;
+}) {
+  const label =
+    status === "PAID"
+      ? "Paid"
+      : status ===
+          "PARTIAL"
+        ? "Partial"
+        : "Due";
+
+  const className =
+    status === "PAID"
       ? "bg-emerald-100 text-emerald-700"
-      : status === "pending"
+      : status ===
+          "PARTIAL"
         ? "bg-amber-100 text-amber-700"
         : "bg-rose-100 text-rose-600";
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-medium capitalize ${statusClass}`}
+      className={`
+        inline-flex
+        rounded-full
+        px-2.5
+        py-1
+        text-xs
+        font-medium
+        ${className}
+      `}
     >
-      {status}
+      {label}
     </span>
   );
 }
 
-export default function DashboardPage() {
+/* =========================================================
+   LOW STOCK BADGE
+========================================================= */
+
+function LowStockBadge({
+  status,
+}: {
+  status:
+    LowStockStatus;
+}) {
+  const outOfStock =
+    status ===
+    "OUT_OF_STOCK";
+
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4">
-      {/* Statistics */}
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {statCards.map((card) => (
-          <StatCardItem key={card.title} card={card} />
-        ))}
-      </section>
-
-      {/* Charts */}
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-start justify-between px-4 pb-1 pt-4">
-            <div>
-              <h3 className="text-[13px] font-semibold text-slate-950">
-                Monthly Sales Chart
-              </h3>
-              <p className="text-[10px] text-slate-500">
-                Jan - Jul 2026 · Bangladeshi Taka (৳)
-              </p>
-            </div>
-
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-medium text-emerald-600">
-              ↗ +10.2%
-            </span>
-          </div>
-
-          <div className="h-[260px] px-2 pb-4 pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={monthlySales}
-                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#e7edf2"
-                />
-
-                <XAxis
-                  dataKey="month"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 10, fill: "#8190a5" }}
-                />
-
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                  tick={{ fontSize: 10, fill: "#8190a5" }}
-                  tickFormatter={(value: number) =>
-                    value === 0 ? "৳0k" : `৳${value / 1000}k`
-                  }
-                />
-
-                <Tooltip
-                  cursor={{ fill: "#f5f9fc" }}
-                  formatter={(value) => [
-                    `৳${Number(value).toLocaleString("en-US")}`,
-                    "Sales",
-                  ]}
-                />
-
-                <Bar
-                  dataKey="amount"
-                  fill="#0789c8"
-                  radius={[6, 6, 0, 0]}
-                  barSize={28}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
-
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-4 pb-1 pt-4">
-            <h3 className="text-[13px] font-semibold text-slate-950">
-              Most Sold Medicine Type
-            </h3>
-            <p className="text-[10px] text-slate-500">
-              By revenue · Admin view
-            </p>
-          </div>
-
-          <div className="h-[160px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={medicineTypes}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={48}
-                  outerRadius={72}
-                  paddingAngle={2}
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                >
-                  {medicineTypes.map((item) => (
-                    <Cell key={item.name} fill={item.color} />
-                  ))}
-                </Pie>
-
-                <Tooltip formatter={(value) => [`${value}%`, "Sales"]} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="space-y-2 px-4 pb-4">
-            {medicineTypes.map((item) => (
-              <div
-                key={item.name}
-                className="flex items-center gap-2 text-[10px]"
-              >
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: item.color }}
-                />
-
-                <span className="min-w-0 flex-1 truncate text-slate-500">
-                  {item.name}
-                </span>
-
-                <span className="font-semibold text-slate-900">
-                  {item.value}%
-                </span>
-
-                <span className="w-[65px] text-right text-emerald-600">
-                  {item.revenue}
-                </span>
-              </div>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      {/* Sales table and stock */}
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <SectionHeader
-            title="Recent Sales"
-            subtitle="Invoice, amount & payment method"
-            action="View all"
-          />
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70">
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Invoice
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Customer
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Items
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Amount (৳)
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Method
-                  </th>
-                  <th className="px-4 py-3 text-[10px] font-medium text-slate-500">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {recentSales.map((sale) => (
-                  <tr
-                    key={sale.invoice}
-                    className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50"
-                  >
-                    <td className="px-4 py-3 text-[11px] font-medium text-sky-600">
-                      {sale.invoice}
-                    </td>
-
-                    <td className="px-4 py-3 text-[11px] text-slate-900">
-                      {sale.customer}
-                    </td>
-
-                    <td className="px-4 py-3 text-[10px] text-slate-500">
-                      {sale.date}
-                    </td>
-
-                    <td className="px-4 py-3 text-[11px] text-slate-800">
-                      {sale.items}
-                    </td>
-
-                    <td className="px-4 py-3 text-[11px] font-semibold text-emerald-700">
-                      {sale.amount}
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[10px] text-sky-700">
-                        {sale.method}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <StatusBadge status={sale.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <SectionHeader title="Low Stock Alerts" action="Manage" />
-
-          <div>
-            {lowStockItems.map((item) => {
-              const isOut = item.status === "Out";
-
-              return (
-                <div
-                  key={item.name}
-                  className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0"
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      isOut ? "bg-rose-500" : "bg-orange-400"
-                    }`}
-                  />
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium text-slate-900">
-                      {item.name}
-                    </p>
-
-                    <p className="text-[10px] text-slate-500">
-                      {item.stock} · {item.minimum}
-                    </p>
-                  </div>
-
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${
-                      isOut
-                        ? "bg-rose-100 text-rose-600"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </article>
-      </section>
-
-      {/* Top medicines and categories */}
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <SectionHeader
-            title="Most Sold Medicines"
-            subtitle="Top 5 by quantity sold"
-            action="TOP 5"
-          />
-
-          <div>
-            {topMedicines.map((medicine) => (
-              <div
-                key={medicine.rank}
-                className="border-b border-slate-100 px-4 py-3 last:border-b-0"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                      medicine.rank === 1
-                        ? "bg-amber-100 text-amber-700"
-                        : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {medicine.rank}
-                  </span>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-[12px] font-semibold text-slate-900">
-                        {medicine.name}
-                      </p>
-
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-[10px] text-slate-500">
-                          {medicine.sold}
-                        </span>
-
-                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
-                          {medicine.revenue}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-sky-500"
-                          style={{ width: `${medicine.percent}%` }}
-                        />
-                      </div>
-
-                      <span className="w-8 text-right text-[9px] text-slate-500">
-                        {medicine.percent}%
-                      </span>
-
-                      <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[9px] text-sky-700">
-                        {medicine.category}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <SectionHeader
-            title="Most Sold Medicine Category"
-            subtitle="By quantity & revenue"
-          />
-
-          <div>
-            {medicineTypes.map((category, index) => {
-              const pieces = [2140, 1850, 1430, 1360, 720];
-
-              return (
-                <div
-                  key={category.name}
-                  className="px-4 py-[13px]"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-4">
-                        <p className="truncate text-[12px] font-medium text-slate-900">
-                          {category.name}
-                        </p>
-
-                        <p className="shrink-0 text-[10px] text-slate-500">
-                          {pieces[index].toLocaleString("en-US")} pcs ·{" "}
-                          <span
-                            className="font-semibold"
-                            style={{ color: category.color }}
-                          >
-                            {category.revenue}
-                          </span>
-                        </p>
-                      </div>
-
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.min(
-                                category.value * 3,
-                                100,
-                              )}%`,
-                              backgroundColor: category.color,
-                            }}
-                          />
-                        </div>
-
-                        <span className="w-7 text-right text-[9px] text-slate-500">
-                          {category.value}%
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </article>
-      </section>
-    </div>
+    <span
+      className={`
+        shrink-0
+        rounded-full
+        px-2.5
+        py-1
+        text-xs
+        font-medium
+        ${
+          outOfStock
+            ? "bg-rose-100 text-rose-600"
+            : "bg-amber-100 text-amber-700"
+        }
+      `}
+    >
+      {outOfStock
+        ? "Out"
+        : "Low"}
+    </span>
   );
 }

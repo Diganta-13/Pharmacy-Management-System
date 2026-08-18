@@ -324,9 +324,13 @@ function getExpiryStatus(
   const nearExpiry =
     new Date(today);
 
+  /*
+   * Final project policy:
+   * Near Expiry = today through next 30 days.
+   */
   nearExpiry.setDate(
     nearExpiry.getDate() +
-      90,
+      30,
   );
 
   if (
@@ -565,8 +569,20 @@ export default function StockPage() {
 
   const statistics =
     useMemo(() => {
-      const total =
-        stockItems.length;
+      /*
+       * Stocked Medicines:
+       * Active medicines that already have
+       * at least one batch / stock record.
+       *
+       * This is different from total active
+       * medicines in the Medicines module.
+       */
+      const stocked =
+        stockItems.filter(
+          (medicine) =>
+            medicine.batches.length >
+            0,
+        ).length;
 
       const healthy =
         stockItems.filter(
@@ -596,7 +612,7 @@ export default function StockPage() {
         ).length;
 
       return {
-        total,
+        stocked,
         healthy,
         low,
         out,
@@ -1010,11 +1026,11 @@ export default function StockPage() {
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
 
           <SummaryCard
-            label="Total Stock Items"
+            label="Stocked Medicines"
             value={
-              statistics.total
+              statistics.stocked
             }
-            description="Medicines with stock records"
+            description="Medicines with batch records"
             icon={
               <Boxes className="h-5 w-5" />
             }
