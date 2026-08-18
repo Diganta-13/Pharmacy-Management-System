@@ -1,10 +1,14 @@
 "use client";
 
 import {
-  FormEvent,
   useEffect,
   useMemo,
   useState,
+} from "react";
+
+import type {
+  FormEvent,
+  ReactNode,
 } from "react";
 
 import {
@@ -25,6 +29,10 @@ import {
 type MedicineStatus =
   | "active"
   | "inactive";
+
+type ReorderMode =
+  | "MANUAL"
+  | "AUTO";
 
 type MedicineUnit = {
   id: string;
@@ -59,9 +67,24 @@ type Medicine = {
 
   baseUnit: string;
 
+  /*
+   * Effective reorder level used for stock status.
+   *
+   * MANUAL -> manualReorderLevel
+   * AUTO   -> autoReorderLevel
+   */
   reorderLevel: number;
 
-  reorderMode?: "MANUAL" | "AUTO";
+  /*
+   * Kept separately so editing an AUTO medicine
+   * never overwrites its manual fallback with the
+   * calculated AUTO threshold.
+   */
+  manualReorderLevel?: number;
+
+  autoReorderLevel?: number;
+
+  reorderMode?: ReorderMode;
 
   prescriptionRequired: boolean;
 
@@ -100,6 +123,8 @@ type MedicineForm = {
   baseUnit: string;
 
   reorderLevel: string;
+
+  reorderMode: ReorderMode;
 
   prescriptionRequired: boolean;
 
@@ -198,6 +223,8 @@ function createEmptyForm(): MedicineForm {
     baseUnit: "Tablet",
 
     reorderLevel: "",
+
+    reorderMode: "MANUAL",
 
     prescriptionRequired: false,
 
@@ -796,8 +823,13 @@ export default function MedicinesPage() {
 
       reorderLevel:
         String(
-          medicine.reorderLevel,
+          medicine.manualReorderLevel ??
+            medicine.reorderLevel,
         ),
+
+      reorderMode:
+        medicine.reorderMode ??
+        "MANUAL",
 
       prescriptionRequired:
         medicine.prescriptionRequired,
@@ -1283,6 +1315,9 @@ export default function MedicinesPage() {
         Number(
           form.reorderLevel,
         ),
+
+      reorderMode:
+        form.reorderMode,
 
       prescriptionRequired:
         form.prescriptionRequired,
@@ -1994,14 +2029,19 @@ export default function MedicinesPage() {
                               }
                             </p>
 
-                            {medicine.reorderMode ===
-                            "AUTO" ? (
-
-                              <p className="mt-1 text-[8px] font-medium text-violet-600">
-                                Auto
-                              </p>
-
-                            ) : null}
+                            <p
+                              className={`mt-1 text-[8px] font-medium ${
+                                medicine.reorderMode ===
+                                "AUTO"
+                                  ? "text-violet-600"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {medicine.reorderMode ===
+                              "AUTO"
+                                ? "Auto"
+                                : "Manual"}
+                            </p>
 
                           </td>
 
@@ -2568,7 +2608,12 @@ export default function MedicinesPage() {
                     </FormField>
 
                     <FormField
-                      label="Reorder Level *"
+                      label={
+                        form.reorderMode ===
+                        "AUTO"
+                          ? "Manual Fallback Level *"
+                          : "Reorder Level *"
+                      }
                       hint={`Stored in ${form.baseUnit}`}
                     >
 
@@ -2604,19 +2649,64 @@ export default function MedicinesPage() {
 
                     </FormField>
 
+                    <FormField
+                      label="Reorder Mode *"
+                      hint="Manual or sales-based auto"
+                    >
+
+                      <select
+                        value={
+                          form.reorderMode
+                        }
+                        disabled={
+                          isSaving
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setForm(
+                            (
+                              currentForm,
+                            ) => ({
+                              ...currentForm,
+
+                              reorderMode:
+                                event
+                                  .target
+                                  .value as ReorderMode,
+                            }),
+                          )
+                        }
+                        className={`${inputClass} disabled:bg-slate-100`}
+                      >
+
+                        <option value="MANUAL">
+                          Manual
+                        </option>
+
+                        <option value="AUTO">
+                          Auto - Sales Based
+                        </option>
+
+                      </select>
+
+                    </FormField>
+
                   </div>
 
                   <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
 
                     <p className="text-[11px] font-semibold text-slate-800">
-                      Example
+                      Reorder Logic
                     </p>
 
                     <p className="mt-1 text-[10px] leading-5 text-slate-500">
-                      If Base Unit = Tablet and Reorder Level = 500,
-                      low-stock logic will compare total sellable stock
-                      against 500 tablets, even if inventory contains
-                      boxes and strips.
+
+                      {form.reorderMode ===
+                      "AUTO"
+                        ? `Auto mode calculates the reorder level from recent completed sales, supplier lead time and safety stock. The entered Reorder Level (${form.reorderLevel || "0"} ${form.baseUnit}) is preserved as the safe manual fallback until enough sales history is available.`
+                        : `Manual mode uses the entered Reorder Level (${form.reorderLevel || "0"} ${form.baseUnit}) directly. Low-stock logic compares total valid sellable stock against this base-unit threshold.`}
+
                     </p>
 
                   </div>
@@ -3054,7 +3144,7 @@ function TableHead({
   children,
 }: {
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
     <th className="px-4 py-4 text-[10px] font-medium text-slate-500">
@@ -3077,7 +3167,7 @@ function FormField({
   hint?: string;
 
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
     <div>

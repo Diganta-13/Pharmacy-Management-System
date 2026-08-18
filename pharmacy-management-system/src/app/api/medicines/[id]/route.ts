@@ -20,6 +20,14 @@ type RouteContext = {
   }>;
 };
 
+type MedicineStatus =
+  | "active"
+  | "inactive";
+
+type ReorderMode =
+  | "MANUAL"
+  | "AUTO";
+
 type MedicineUnitInput = {
   id?: string | number;
 
@@ -53,11 +61,36 @@ interface ExistingUnitRow
 
 interface UnitReferenceRow
   extends RowDataPacket {
-  purchase_refs: number | string;
+  purchase_refs:
+    | number
+    | string;
 
-  sale_refs: number | string;
+  sale_refs:
+    | number
+    | string;
 
-  price_refs: number | string;
+  price_refs:
+    | number
+    | string;
+}
+
+interface InventorySettingRow
+  extends RowDataPacket {
+  reorder_mode:
+    | "MANUAL"
+    | "AUTO";
+
+  manual_reorder_level_base:
+    | number
+    | string;
+
+  auto_reorder_level_base:
+    | number
+    | string;
+
+  last_calculated_at:
+    | string
+    | null;
 }
 
 /* =========================================================
@@ -67,7 +100,8 @@ interface UnitReferenceRow
 function cleanString(
   value: unknown,
 ) {
-  return typeof value === "string"
+  return typeof value ===
+    "string"
     ? value.trim()
     : "";
 }
@@ -82,7 +116,7 @@ function validMedicineCode(
 
 function parseStatus(
   value: unknown,
-) {
+): MedicineStatus | null {
   if (
     value === "active" ||
     value === "inactive"
@@ -93,8 +127,26 @@ function parseStatus(
   return null;
 }
 
+function parseReorderMode(
+  value: unknown,
+): ReorderMode | null {
+  const normalized =
+    cleanString(
+      value,
+    ).toUpperCase();
+
+  if (
+    normalized === "MANUAL" ||
+    normalized === "AUTO"
+  ) {
+    return normalized;
+  }
+
+  return null;
+}
+
 /* =========================================================
-   PATCH
+   PATCH MEDICINE
 ========================================================= */
 
 export async function PATCH(
@@ -104,12 +156,21 @@ export async function PATCH(
   const connection =
     await db.getConnection();
 
+  let transactionStarted =
+    false;
+
   try {
     const { id } =
       await context.params;
 
     const medicineCode =
-      id.toUpperCase();
+      cleanString(
+        id,
+      ).toUpperCase();
+
+    /* =====================================================
+       VALIDATE MEDICINE CODE
+    ===================================================== */
 
     if (
       !validMedicineCode(
@@ -134,16 +195,25 @@ export async function PATCH(
 
     await connection.beginTransaction();
 
+    transactionStarted =
+      true;
+
+    /* =====================================================
+       FIND + LOCK MEDICINE
+    ===================================================== */
+
     const [medicineRows] =
       await connection.execute<
         MedicineIdRow[]
       >(
         `
-          SELECT id
+          SELECT
+            id
 
           FROM medicines
 
-          WHERE medicine_code = ?
+          WHERE
+            medicine_code = ?
 
           LIMIT 1
 
@@ -159,6 +229,9 @@ export async function PATCH(
       0
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -178,8 +251,6 @@ export async function PATCH(
 
     /* =====================================================
        STATUS ONLY UPDATE
-
-       Used by Activate / Deactivate button.
     ===================================================== */
 
     if (
@@ -193,6 +264,9 @@ export async function PATCH(
 
       if (!status) {
         await connection.rollback();
+
+        transactionStarted =
+          false;
 
         return NextResponse.json(
           {
@@ -211,12 +285,15 @@ export async function PATCH(
         `
           UPDATE medicines
 
-          SET status = ?
+          SET
+            status = ?
 
-          WHERE id = ?
+          WHERE
+            id = ?
         `,
         [
-          status === "active"
+          status ===
+          "active"
             ? "ACTIVE"
             : "INACTIVE",
 
@@ -225,6 +302,9 @@ export async function PATCH(
       );
 
       await connection.commit();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json({
         success: true,
@@ -235,7 +315,7 @@ export async function PATCH(
     }
 
     /* =====================================================
-       FULL UPDATE
+       FULL EDIT VALUES
     ===================================================== */
 
     const name =
@@ -278,10 +358,19 @@ export async function PATCH(
         body.reorderLevel,
       );
 
+    const requestedReorderMode =
+      parseReorderMode(
+        body.reorderMode,
+      );
+
     const status =
       parseStatus(
         body.status,
       );
+
+    /* =====================================================
+       REQUIRED FIELD VALIDATION
+    ===================================================== */
 
     if (
       !name ||
@@ -293,6 +382,9 @@ export async function PATCH(
       !baseUnit
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -307,6 +399,10 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       REORDER LEVEL VALIDATION
+    ===================================================== */
+
     if (
       !Number.isInteger(
         reorderLevel,
@@ -314,6 +410,9 @@ export async function PATCH(
       reorderLevel < 0
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -328,8 +427,44 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       REORDER MODE VALIDATION
+    ===================================================== */
+
+    if (
+      body.reorderMode !==
+        undefined &&
+      body.reorderMode !==
+        null &&
+      !requestedReorderMode
+    ) {
+      await connection.rollback();
+
+      transactionStarted =
+        false;
+
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            "Reorder mode must be MANUAL or AUTO.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /* =====================================================
+       STATUS VALIDATION
+    ===================================================== */
+
     if (!status) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -344,13 +479,21 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       UNIT ARRAY VALIDATION
+    ===================================================== */
+
     if (
       !Array.isArray(
         body.units,
       ) ||
-      body.units.length === 0
+      body.units.length ===
+        0
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -365,8 +508,13 @@ export async function PATCH(
       );
     }
 
-    const units: MedicineUnitInput[] =
+    const units:
+      MedicineUnitInput[] =
       [];
+
+    /* =====================================================
+       VALIDATE EACH UNIT
+    ===================================================== */
 
     for (
       const rawUnit of
@@ -378,6 +526,9 @@ export async function PATCH(
         rawUnit === null
       ) {
         await connection.rollback();
+
+        transactionStarted =
+          false;
 
         return NextResponse.json(
           {
@@ -426,6 +577,9 @@ export async function PATCH(
       if (!unitName) {
         await connection.rollback();
 
+        transactionStarted =
+          false;
+
         return NextResponse.json(
           {
             success: false,
@@ -447,11 +601,15 @@ export async function PATCH(
       ) {
         await connection.rollback();
 
+        transactionStarted =
+          false;
+
         return NextResponse.json(
           {
             success: false,
 
-            message: `Invalid conversion for ${unitName}.`,
+            message:
+              `Invalid conversion for ${unitName}.`,
           },
           {
             status: 400,
@@ -459,11 +617,16 @@ export async function PATCH(
         );
       }
 
+      /* Base unit always = 1 */
+
       if (
         isBaseUnit &&
         conversion !== 1
       ) {
         await connection.rollback();
+
+        transactionStarted =
+          false;
 
         return NextResponse.json(
           {
@@ -478,17 +641,23 @@ export async function PATCH(
         );
       }
 
+      /* Larger packaging must contain > 1 base unit */
+
       if (
         !isBaseUnit &&
         conversion <= 1
       ) {
         await connection.rollback();
 
+        transactionStarted =
+          false;
+
         return NextResponse.json(
           {
             success: false,
 
-            message: `${unitName} must contain more than 1 ${baseUnit}.`,
+            message:
+              `${unitName} must contain more than 1 ${baseUnit}.`,
           },
           {
             status: 400,
@@ -502,11 +671,15 @@ export async function PATCH(
       ) {
         await connection.rollback();
 
+        transactionStarted =
+          false;
+
         return NextResponse.json(
           {
             success: false,
 
-            message: `${unitName} must be sellable, purchasable, or both.`,
+            message:
+              `${unitName} must be sellable, purchasable, or both.`,
           },
           {
             status: 400,
@@ -537,12 +710,14 @@ export async function PATCH(
     }
 
     /* =====================================================
-       DUPLICATE UNIT VALIDATION
+       DUPLICATE UNIT NAMES
     ===================================================== */
 
     const normalizedNames =
-      units.map((unit) =>
-        unit.unitName.toLowerCase(),
+      units.map(
+        (unit) =>
+          unit.unitName
+            .toLowerCase(),
       );
 
     if (
@@ -552,6 +727,9 @@ export async function PATCH(
       normalizedNames.length
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -566,16 +744,24 @@ export async function PATCH(
       );
     }
 
-    const baseUnits =
+    /* =====================================================
+       EXACTLY ONE BASE UNIT
+    ===================================================== */
+
+    const configuredBaseUnits =
       units.filter(
         (unit) =>
           unit.isBaseUnit,
       );
 
     if (
-      baseUnits.length !== 1
+      configuredBaseUnits.length !==
+      1
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -590,11 +776,20 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       BASE UNIT NAME MUST MATCH
+    ===================================================== */
+
     if (
-      baseUnits[0].unitName.toLowerCase() !==
+      configuredBaseUnits[0]
+        .unitName
+        .toLowerCase() !==
       baseUnit.toLowerCase()
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -610,7 +805,7 @@ export async function PATCH(
     }
 
     /* =====================================================
-       CATEGORY
+       CATEGORY CHECK
     ===================================================== */
 
     const [categoryRows] =
@@ -618,11 +813,13 @@ export async function PATCH(
         CategoryRow[]
       >(
         `
-          SELECT id
+          SELECT
+            id
 
           FROM categories
 
-          WHERE name = ?
+          WHERE
+            name = ?
 
           LIMIT 1
         `,
@@ -632,9 +829,13 @@ export async function PATCH(
       );
 
     if (
-      categoryRows.length === 0
+      categoryRows.length ===
+      0
     ) {
       await connection.rollback();
+
+      transactionStarted =
+        false;
 
       return NextResponse.json(
         {
@@ -659,15 +860,23 @@ export async function PATCH(
 
         SET
           category_id = ?,
+
           name = ?,
+
           generic_name = ?,
+
           manufacturer = ?,
+
           dosage_form = ?,
+
           strength = ?,
+
           prescription_required = ?,
+
           status = ?
 
-        WHERE id = ?
+        WHERE
+          id = ?
       `,
       [
         categoryRows[0].id,
@@ -688,7 +897,8 @@ export async function PATCH(
           ? 1
           : 0,
 
-        status === "active"
+        status ===
+        "active"
           ? "ACTIVE"
           : "INACTIVE",
 
@@ -697,41 +907,196 @@ export async function PATCH(
     );
 
     /* =====================================================
-       UPDATE REORDER LEVEL
-
-       Keep future AUTO fields intact.
+       REORDER SETTINGS
     ===================================================== */
 
-    await connection.execute(
-      `
-        INSERT INTO medicine_inventory_settings
-        (
-          medicine_id,
-          reorder_mode,
-          manual_reorder_level_base,
-          auto_reorder_level_base,
-          safety_stock_base,
-          sales_lookback_days,
-          minimum_history_days
-        )
-        VALUES
-        (?, 'MANUAL', ?, 0, 0, 30, 7)
+    const [inventoryRows] =
+      await connection.execute<
+        InventorySettingRow[]
+      >(
+        `
+          SELECT
+            reorder_mode,
 
-        ON DUPLICATE KEY UPDATE
-          manual_reorder_level_base =
-            VALUES(
-              manual_reorder_level_base
+            manual_reorder_level_base,
+
+            auto_reorder_level_base,
+
+            DATE_FORMAT(
+              last_calculated_at,
+              '%Y-%m-%dT%H:%i:%s'
             )
-      `,
-      [
-        medicineId,
+              AS last_calculated_at
 
-        reorderLevel,
-      ],
-    );
+          FROM medicine_inventory_settings
+
+          WHERE
+            medicine_id = ?
+
+          LIMIT 1
+
+          FOR UPDATE
+        `,
+        [
+          medicineId,
+        ],
+      );
+
+    const existingInventory =
+      inventoryRows[0];
+
+    /*
+     * If old frontend does not send reorderMode,
+     * keep existing DB mode.
+     */
+
+    const reorderMode:
+      ReorderMode =
+      requestedReorderMode ??
+      existingInventory
+        ?.reorder_mode ??
+      "MANUAL";
 
     /* =====================================================
-       EXISTING UNITS
+       SETTINGS ROW DOES NOT EXIST
+    ===================================================== */
+
+    if (
+      !existingInventory
+    ) {
+      const initialAutoLevel =
+        reorderMode ===
+        "AUTO"
+          ? reorderLevel
+          : 0;
+
+      await connection.execute(
+        `
+          INSERT INTO medicine_inventory_settings
+          (
+            medicine_id,
+
+            reorder_mode,
+
+            manual_reorder_level_base,
+
+            auto_reorder_level_base,
+
+            safety_stock_base,
+
+            sales_lookback_days,
+
+            minimum_history_days,
+
+            last_average_daily_sales,
+
+            last_calculated_at
+          )
+
+          VALUES
+          (
+            ?,
+            ?,
+            ?,
+            ?,
+            0,
+            30,
+            7,
+            0,
+            NULL
+          )
+        `,
+        [
+          medicineId,
+
+          reorderMode,
+
+          reorderLevel,
+
+          initialAutoLevel,
+        ],
+      );
+    }
+
+    /* =====================================================
+       MANUAL -> AUTO
+
+       Reset calculation timestamp so recalculate API
+       knows it should build a fresh AUTO level.
+    ===================================================== */
+
+    else if (
+      existingInventory
+        .reorder_mode !==
+        "AUTO" &&
+      reorderMode ===
+        "AUTO"
+    ) {
+      await connection.execute(
+        `
+          UPDATE medicine_inventory_settings
+
+          SET
+            reorder_mode =
+              'AUTO',
+
+            manual_reorder_level_base =
+              ?,
+
+            auto_reorder_level_base =
+              ?,
+
+            last_calculated_at =
+              NULL
+
+          WHERE
+            medicine_id = ?
+        `,
+        [
+          reorderLevel,
+
+          reorderLevel,
+
+          medicineId,
+        ],
+      );
+    }
+
+    /* =====================================================
+       EXISTING SETTINGS
+
+       If already AUTO:
+       preserve existing calculated auto level.
+
+       If MANUAL:
+       only manual threshold becomes active.
+    ===================================================== */
+
+    else {
+      await connection.execute(
+        `
+          UPDATE medicine_inventory_settings
+
+          SET
+            reorder_mode = ?,
+
+            manual_reorder_level_base = ?
+
+          WHERE
+            medicine_id = ?
+        `,
+        [
+          reorderMode,
+
+          reorderLevel,
+
+          medicineId,
+        ],
+      );
+    }
+
+    /* =====================================================
+       LOAD EXISTING UNITS
     ===================================================== */
 
     const [existingUnits] =
@@ -741,11 +1106,13 @@ export async function PATCH(
         `
           SELECT
             id,
+
             unit_name
 
           FROM medicine_units
 
-          WHERE medicine_id = ?
+          WHERE
+            medicine_id = ?
         `,
         [
           medicineId,
@@ -756,7 +1123,9 @@ export async function PATCH(
       new Set(
         existingUnits.map(
           (unit) =>
-            Number(unit.id),
+            Number(
+              unit.id,
+            ),
         ),
       );
 
@@ -792,7 +1161,12 @@ export async function PATCH(
       const displayOrder =
         unit.isBaseUnit
           ? 1000
-          : 900 - index;
+          : 900 -
+            index;
+
+      /* ===================================================
+         UPDATE EXISTING UNIT
+      =================================================== */
 
       if (
         isExistingUnit
@@ -803,14 +1177,20 @@ export async function PATCH(
 
             SET
               unit_name = ?,
+
               conversion_to_base = ?,
+
               is_base_unit = ?,
+
               is_sellable = ?,
+
               is_purchasable = ?,
+
               display_order = ?
 
             WHERE
               id = ?
+
               AND medicine_id = ?
           `,
           [
@@ -841,7 +1221,13 @@ export async function PATCH(
         retainedUnitIds.add(
           incomingId,
         );
-      } else {
+      }
+
+      /* ===================================================
+         INSERT NEW UNIT
+      =================================================== */
+
+      else {
         const [insertResult] =
           await connection.execute<
             ResultSetHeader
@@ -850,15 +1236,30 @@ export async function PATCH(
               INSERT INTO medicine_units
               (
                 medicine_id,
+
                 unit_name,
+
                 conversion_to_base,
+
                 is_base_unit,
+
                 is_sellable,
+
                 is_purchasable,
+
                 display_order
               )
+
               VALUES
-              (?, ?, ?, ?, ?, ?, ?)
+              (
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
+              )
             `,
             [
               medicineId,
@@ -890,12 +1291,7 @@ export async function PATCH(
     }
 
     /* =====================================================
-       REMOVED UNITS
-
-       Important real-world rule:
-
-       If a unit has already been used in purchase,
-       sale, or batch price history, we DO NOT delete it.
+       HANDLE REMOVED UNITS
     ===================================================== */
 
     for (
@@ -915,6 +1311,10 @@ export async function PATCH(
         continue;
       }
 
+      /* ===================================================
+         CHECK TRANSACTION HISTORY
+      =================================================== */
+
       const [referenceRows] =
         await connection.execute<
           UnitReferenceRow[]
@@ -923,35 +1323,47 @@ export async function PATCH(
             SELECT
 
               (
-                SELECT COUNT(*)
+                SELECT
+                  COUNT(*)
 
                 FROM purchase_items
 
                 WHERE
                   purchase_unit_id = ?
+
                   OR pricing_unit_id = ?
-              ) AS purchase_refs,
+              )
+                AS purchase_refs,
 
               (
-                SELECT COUNT(*)
+                SELECT
+                  COUNT(*)
 
                 FROM sale_items
 
-                WHERE medicine_unit_id = ?
-              ) AS sale_refs,
+                WHERE
+                  medicine_unit_id = ?
+              )
+                AS sale_refs,
 
               (
-                SELECT COUNT(*)
+                SELECT
+                  COUNT(*)
 
                 FROM batch_unit_prices
 
-                WHERE medicine_unit_id = ?
-              ) AS price_refs
+                WHERE
+                  medicine_unit_id = ?
+              )
+                AS price_refs
           `,
           [
             existingUnitId,
+
             existingUnitId,
+
             existingUnitId,
+
             existingUnitId,
           ],
         );
@@ -970,16 +1382,25 @@ export async function PATCH(
           refs.price_refs,
         );
 
+      /* ===================================================
+         USED UNIT CANNOT BE DELETED
+      =================================================== */
+
       if (
-        totalReferences > 0
+        totalReferences >
+        0
       ) {
         await connection.rollback();
+
+        transactionStarted =
+          false;
 
         return NextResponse.json(
           {
             success: false,
 
-            message: `Unit "${existingUnit.unit_name}" already has purchase, sales, or batch-price history and cannot be removed.`,
+            message:
+              `Unit "${existingUnit.unit_name}" already has purchase, sales, or batch-price history and cannot be removed.`,
           },
           {
             status: 409,
@@ -987,12 +1408,17 @@ export async function PATCH(
         );
       }
 
+      /* ===================================================
+         UNUSED UNIT CAN BE DELETED
+      =================================================== */
+
       await connection.execute(
         `
           DELETE FROM medicine_units
 
           WHERE
             id = ?
+
             AND medicine_id = ?
         `,
         [
@@ -1003,16 +1429,37 @@ export async function PATCH(
       );
     }
 
+    /* =====================================================
+       COMMIT
+    ===================================================== */
+
     await connection.commit();
+
+    transactionStarted =
+      false;
 
     return NextResponse.json({
       success: true,
 
       message:
         "Medicine updated successfully.",
+
+      data: {
+        id:
+          medicineCode,
+
+        reorderMode,
+
+        manualReorderLevel:
+          reorderLevel,
+      },
     });
   } catch (error) {
-    await connection.rollback();
+    if (
+      transactionStarted
+    ) {
+      await connection.rollback();
+    }
 
     console.error(
       "PATCH medicine error:",
@@ -1046,7 +1493,9 @@ export async function PATCH(
         success: false,
 
         message:
-          "Failed to update medicine.",
+          error instanceof Error
+            ? error.message
+            : "Failed to update medicine.",
       },
       {
         status: 500,
