@@ -21,9 +21,9 @@ const pageTitles:
     "/pharmacist/search-medicine":
       "Search Medicine",
 
-    "/pharmacist/stock":
-      "Stock View",
-
+   "/pharmacist/stock":
+  "Stock Management",
+  
     "/pharmacist/sales":
       "Sales & Billing",
 
