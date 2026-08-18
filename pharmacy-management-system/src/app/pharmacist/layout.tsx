@@ -1,18 +1,33 @@
-import type { ReactNode } from "react";
+import type {
+  ReactNode,
+} from "react";
 
-export default function PharmacistLayout({ children }: { children: ReactNode }) {
+import PharmacistNavbar from "@/components/PharmacistNavbar";
+
+import PharmacistSidebar from "@/components/PharmacistSidebar";
+
+type PharmacistLayoutProps = {
+  children: ReactNode;
+};
+
+export default function PharmacistLayout({
+  children,
+}: PharmacistLayoutProps) {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-6 py-5 shadow-sm">
-        <div className="max-w-8xl mx-auto flex items-center justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Pharmacist Dashboard</p>
-            <h1 className="text-2xl font-semibold text-slate-900">Pharmacy Team Workspace</h1>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#f4f7f9] lg:flex">
 
-      <main className="px-6 py-8">{children}</main>
+      <PharmacistSidebar />
+
+      <div className="min-w-0 flex-1">
+
+        <PharmacistNavbar />
+
+        <main className="min-h-[calc(100vh-64px)] p-4 sm:p-5 lg:p-6">
+          {children}
+        </main>
+
+      </div>
+
     </div>
   );
 }
